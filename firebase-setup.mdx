@@ -1,0 +1,512 @@
+---
+title: Firebase Setup
+description: Configure Firebase Storage, Firestore, and Analytics for your TikTok Clone iOS app
+---
+
+## Overview
+
+The TikTok Clone app uses three core Firebase services:
+
+<CardGroup cols={3}>
+  <Card title="Firebase Storage" icon="database">
+    Stores video files uploaded by users
+  </Card>
+  <Card title="Cloud Firestore" icon="file-lines">
+    NoSQL database for posts, users, and comments
+  </Card>
+  <Card title="Firebase Analytics" icon="chart-line">
+    Tracks user engagement and app usage
+  </Card>
+</CardGroup>
+
+This guide will walk you through setting up each service from scratch.
+
+## Step 1: Create a Firebase Project
+
+<Steps>
+  <Step title="Go to Firebase Console">
+    Navigate to [Firebase Console](https://console.firebase.google.com/) and sign in with your Google account.
+  </Step>
+  
+  <Step title="Create a new project">
+    1. Click **Add project**
+    2. Enter a project name: `TikTok-Clone-iOS`
+    3. Click **Continue**
+  </Step>
+  
+  <Step title="Configure Google Analytics">
+    1. Enable Google Analytics (recommended)
+    2. Select or create an Analytics account
+    3. Click **Create project**
+    
+    Wait for the project to be provisioned (this takes about 30 seconds).
+  </Step>
+</Steps>
+
+## Step 2: Add iOS App to Firebase
+
+<Steps>
+  <Step title="Register your iOS app">
+    1. In the Firebase Console, click the **iOS** icon
+    2. Enter your iOS Bundle ID:
+    
+    ```
+    com.yourname.tiktok-clone
+    ```
+    
+    <Warning>
+      This **must match** the Bundle Identifier in your Xcode project under **Signing & Capabilities**.
+    </Warning>
+  </Step>
+  
+  <Step title="Add app nickname (optional)">
+    Enter a nickname like `TikTok Clone iOS` to identify this app in the console.
+  </Step>
+  
+  <Step title="Download configuration file">
+    1. Click **Download GoogleService-Info.plist**
+    2. Save the file - you'll add it to Xcode next
+    3. Click **Next**
+  </Step>
+  
+  <Step title="Add GoogleService-Info.plist to Xcode">
+    1. Open your Xcode project
+    2. Right-click the **KD Tiktok-Clone** folder
+    3. Select **Add Files to "KD Tiktok-Clone"...**
+    4. Choose the downloaded `GoogleService-Info.plist`
+    5. Ensure **"Copy items if needed"** is checked
+    6. Click **Add**
+    
+    The file should be placed in:
+    ```
+    KD Tiktok-Clone/Utils/GoogleService-Info.plist
+    ```
+  </Step>
+  
+  <Step title="Verify Firebase initialization">
+    Firebase is initialized in `AppDelegate.swift`:
+    
+    ```swift AppDelegate.swift:10-21
+    import UIKit
+    import Firebase
+    
+    @UIApplicationMain
+    class AppDelegate: UIResponder, UIApplicationDelegate {
+        func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+            FirebaseApp.configure()
+            return true
+        }
+    }
+    ```
+    
+    No additional code changes are needed!
+  </Step>
+</Steps>
+
+## Step 3: Enable Cloud Firestore
+
+Firestore stores all post metadata, user profiles, and comments.
+
+<Steps>
+  <Step title="Navigate to Firestore">
+    In the Firebase Console, click **Firestore Database** in the left sidebar.
+  </Step>
+  
+  <Step title="Create database">
+    1. Click **Create database**
+    2. Select **Start in test mode** (for development)
+    3. Click **Next**
+    
+    <Warning>
+      Test mode allows unrestricted read/write access. **Change to production mode** before launching publicly.
+    </Warning>
+  </Step>
+  
+  <Step title="Choose Firestore location">
+    Select a region close to your users (e.g., `us-central` or `us-east1`), then click **Enable**.
+    
+    <Note>
+      The location **cannot be changed** after creation, so choose carefully.
+    </Note>
+  </Step>
+  
+  <Step title="Create Post collection">
+    The app expects a `Post` collection. Click **Start collection**:
+    
+    - **Collection ID**: `Post`
+    - Click **Next**
+  </Step>
+  
+  <Step title="Add sample document">
+    Add a test document with these fields:
+    
+    | Field | Type | Value |
+    |-------|------|-------|
+    | `video` | string | `sample.mp4` |
+    | `videoURL` | string | `https://firebase.storage.example.com/videos/sample.mp4` |
+    | `videoFileExtension` | string | `mp4` |
+    | `videoHeight` | number | `1920` |
+    | `videoWidth` | number | `1080` |
+    | `author` | string | `user123` |
+    | `autherName` | string | `John Doe` |
+    | `caption` | string | `Check out my first video!` |
+    | `music` | string | `Original Sound` |
+    | `likeCount` | number | `0` |
+    | `shareCount` | number | `0` |
+    | `commentID` | string | `comment123` |
+    | `pageNumber` | number | `1` |
+    
+    Click **Save**
+    
+    <Note>
+      The `pageNumber` field is used for pagination in the home feed.
+    </Note>
+  </Step>
+</Steps>
+
+### Firestore Data Structure
+
+The app uses this Firestore schema:
+
+```
+Firestore Database
+└── Post (collection)
+    └── {documentId} (auto-generated)
+        ├── video: String
+        ├── videoURL: String
+        ├── videoFileExtension: String
+        ├── videoHeight: Number
+        ├── videoWidth: Number
+        ├── author: String
+        ├── autherName: String
+        ├── caption: String
+        ├── music: String
+        ├── likeCount: Number
+        ├── shareCount: Number
+        ├── commentID: String
+        └── pageNumber: Number
+```
+
+### How Posts Are Fetched
+
+The app uses paginated queries to load videos:
+
+```swift PostsRequest.swift:22-34
+static func getPostsByPages(pageNumber: Int, size: Int = 5, success: @escaping Success, failure:  @escaping Failure){
+    db.whereField(field, isGreaterThanOrEqualTo: pageNumber)
+        .whereField(field, isLessThan: pageNumber + size)
+        .getDocuments(completion: {snapshot, error in
+            if let error = error {
+                failure(error)
+            } else {
+                if let snapshot = snapshot {
+                    success(snapshot)
+                }
+            }
+        })
+}
+```
+
+<Note>
+  Videos are loaded in batches of 5-10 posts based on the `pageNumber` field.
+</Note>
+
+## Step 4: Enable Firebase Storage
+
+Firebase Storage stores the actual video files.
+
+<Steps>
+  <Step title="Navigate to Storage">
+    In the Firebase Console, click **Storage** in the left sidebar.
+  </Step>
+  
+  <Step title="Get started">
+    Click **Get started**
+  </Step>
+  
+  <Step title="Configure security rules">
+    1. Select **Start in test mode**
+    2. Click **Next**
+    
+    <Warning>
+      Test mode allows anyone to read/write files. Update rules before production:
+      
+      ```javascript
+      rules_version = '2';
+      service firebase.storage {
+        match /b/{bucket}/o {
+          match /Videos/{videoId} {
+            allow read: if true;
+            allow write: if request.auth != null;
+          }
+        }
+      }
+      ```
+    </Warning>
+  </Step>
+  
+  <Step title="Choose storage location">
+    Select the same region as your Firestore database, then click **Done**.
+  </Step>
+  
+  <Step title="Create Videos folder">
+    1. Click **Create folder**
+    2. Name it `Videos`
+    3. Click **Create**
+    
+    This folder will store all uploaded video files.
+  </Step>
+</Steps>
+
+### Video Upload Flow
+
+Here's how videos are uploaded to Firebase Storage:
+
+```swift VideoPostRequest.swift:21-54
+static func publishPost(post: Post, videoURL: URL, success: @escaping Success, failure:  @escaping Failure){
+    let videoRef = Storage.storage().reference().child("Videos/\(post.video)")
+    
+    // Upload the file to Firebase Storage
+    let _ = videoRef.putFile(from: videoURL, metadata: nil) { metadata, error in
+        if let error = error {
+            failure(error)
+            return
+        }
+        guard let metadata = metadata else { return }
+        let size = metadata.size / 1024 / 1024
+        print("File Size: \(size)MB")
+        
+        // Get download URL
+        videoRef.downloadURL { (url, error) in
+            guard let downloadURL = url else { return }
+            var tempPost = post
+            tempPost.videoURL = downloadURL
+            _publishPostToDatabase(post: tempPost)
+        }
+    }
+}
+```
+
+<Note>
+  The upload process:
+  1. Upload video to Storage
+  2. Get the download URL
+  3. Save post metadata + URL to Firestore
+</Note>
+
+## Step 5: Configure Firebase Analytics
+
+Analytics is automatically enabled when you add Firebase to your app.
+
+<Steps>
+  <Step title="Verify Analytics setup">
+    Firebase Analytics is initialized automatically via `FirebaseApp.configure()`.
+  </Step>
+  
+  <Step title="Test analytics">
+    Run the app and navigate through different screens. Events are logged automatically.
+  </Step>
+  
+  <Step title="View analytics data">
+    1. Go to **Analytics → Events** in Firebase Console
+    2. Wait 24 hours for initial data to appear
+    3. View metrics like:
+       - Screen views
+       - User engagement
+       - Retention rates
+  </Step>
+</Steps>
+
+<Note>
+  Analytics data has a delay of up to 24 hours. Use **DebugView** for real-time testing.
+</Note>
+
+## Step 6: Update Security Rules (Production)
+
+Before launching your app, update security rules:
+
+### Firestore Rules
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read access to all posts
+    match /Post/{postId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Restrict user data access
+    match /User/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Comments require authentication
+    match /Comment/{commentId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+
+### Storage Rules
+
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /Videos/{videoId} {
+      // Anyone can read videos
+      allow read: if true;
+      
+      // Only authenticated users can upload
+      allow write: if request.auth != null
+                   && request.resource.size < 50 * 1024 * 1024 // Max 50MB
+                   && request.resource.contentType.matches('video/.*');
+    }
+  }
+}
+```
+
+<Warning>
+  These rules require Firebase Authentication. Implement user auth before deploying to production.
+</Warning>
+
+## Testing Your Firebase Setup
+
+<Steps>
+  <Step title="Run the app">
+    Build and run the app in Xcode (⌘ + R)
+  </Step>
+  
+  <Step title="Check Firestore connection">
+    The home feed should load posts from your Firestore database. Check Xcode console for logs:
+    
+    ```
+    Successfully fetched 5 posts from Firestore
+    ```
+  </Step>
+  
+  <Step title="Test video upload">
+    1. Tap the **+** button to record a video
+    2. Grant camera and microphone permissions
+    3. Record a short video
+    4. Add a caption and tap **Post**
+    5. Check Firebase Console → Storage to see the uploaded file
+  </Step>
+  
+  <Step title="Verify video caching">
+    Videos are automatically cached after viewing. Check the app's document directory:
+    
+    ```swift VideoCacheManager.swift:33-42
+    let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+    let diskDirectory = paths.last! + "/VideoCache"
+    if !diskCache.fileExists(atPath: diskDirectory) {
+        do {
+            try diskCache.createDirectory(atPath: diskDirectory, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("Unable to create disk cache due to: " + error.localizedDescription)
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Firebase app not initialized">
+    **Solution**: Verify that:
+    1. `GoogleService-Info.plist` is in your Xcode project
+    2. The file is included in the app target
+    3. `FirebaseApp.configure()` is called in `AppDelegate`
+  </Accordion>
+  
+  <Accordion title="Error: Permission denied on Firestore">
+    **Solution**: Check your Firestore security rules. For development, use test mode:
+    
+    ```javascript
+    allow read, write: if true;
+    ```
+  </Accordion>
+  
+  <Accordion title="Videos not uploading to Storage">
+    **Solution**: 
+    1. Verify Storage is enabled in Firebase Console
+    2. Check Storage security rules allow writes
+    3. Ensure video file size is under 50MB
+    4. Check network connectivity
+  </Accordion>
+  
+  <Accordion title="Bundle ID mismatch error">
+    **Solution**: The Bundle ID in Xcode must match Firebase Console:
+    1. Check Xcode: **Target → Signing & Capabilities → Bundle Identifier**
+    2. Check Firebase: **Project Settings → Your apps → iOS apps**
+    3. Update to match, then re-download `GoogleService-Info.plist`
+  </Accordion>
+</AccordionGroup>
+
+## Firebase Console Overview
+
+Key sections you'll use:
+
+<CardGroup cols={2}>
+  <Card title="Firestore Database" icon="database">
+    View and edit posts, users, and comments
+  </Card>
+  <Card title="Storage" icon="folder">
+    Browse uploaded videos and manage storage
+  </Card>
+  <Card title="Analytics" icon="chart-simple">
+    Track user engagement and app metrics
+  </Card>
+  <Card title="Project Settings" icon="gear">
+    Manage API keys and app configurations
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/architecture"
+  >
+    Learn about MVVM, RxSwift, and the app's code structure
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api-reference"
+  >
+    Explore Firebase request methods and data models
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Note>
+  **Development vs Production**:
+  - Development: Use test mode for easier debugging
+  - Production: Implement authentication and strict security rules
+</Note>
+
+<Warning>
+  **Cost Management**:
+  - Firebase has a generous free tier
+  - Monitor Storage usage (1GB download/day free)
+  - Monitor Firestore reads (50K reads/day free)
+  - Set up budget alerts in Firebase Console
+</Warning>
+
+<Note>
+  **Video Optimization**:
+  - Keep videos under 30 seconds
+  - Use H.264 codec for best compatibility
+  - Compress videos to 720p or 1080p max
+  - Implement video transcoding for production apps
+</Note>

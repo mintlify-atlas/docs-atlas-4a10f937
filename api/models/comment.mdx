@@ -1,0 +1,254 @@
+---
+title: "Comments"
+description: "Represents a user comment on a video post with author information, content, and engagement metrics."
+---
+
+## Overview
+
+The `Comments` struct represents a single comment on a post, including the commenter's information, comment text, timestamp, and engagement metrics.
+
+## Properties
+
+<ParamField path="name" type="String" required>
+  Display name of the user who wrote the comment
+</ParamField>
+
+<ParamField path="profilePic" type="String" required>
+  URL or reference string to the commenter's profile picture
+</ParamField>
+
+<ParamField path="comment" type="String" required>
+  The actual comment text content
+</ParamField>
+
+<ParamField path="timeAgo" type="Date" required>
+  Timestamp indicating when the comment was created
+</ParamField>
+
+<ParamField path="likeCount" type="Int" required>
+  Number of likes the comment has received
+</ParamField>
+
+## Initialization
+
+```swift
+let comment = Comments(
+    name: "John Doe",
+    profilePic: "https://example.com/profiles/john.jpg",
+    comment: "Amazing video! Love the creativity!",
+    timeAgo: Date(),
+    likeCount: 42
+)
+```
+
+## Usage Examples
+
+### Creating a New Comment
+
+```swift
+import Foundation
+
+// Create a comment when user submits
+func createComment(text: String, by user: User) -> Comments {
+    return Comments(
+        name: user.name,
+        profilePic: user.profilePic,
+        comment: text,
+        timeAgo: Date(),
+        likeCount: 0
+    )
+}
+
+// Usage
+let newComment = createComment(text: "Great content!", by: currentUser)
+```
+
+### Displaying Comments in a Table View
+
+```swift
+class CommentsTableViewController: UITableViewController {
+    var comments: [Comments] = []
+    
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "CommentCell", for: indexPath) as! CommentCell
+        let comment = comments[indexPath.row]
+        
+        cell.nameLabel.text = comment.name
+        cell.commentLabel.text = comment.comment
+        cell.likeCountLabel.text = "\(comment.likeCount)"
+        cell.timeLabel.text = formatTimeAgo(comment.timeAgo)
+        
+        // Load profile picture
+        if let url = URL(string: comment.profilePic) {
+            cell.loadProfileImage(from: url)
+        }
+        
+        return cell
+    }
+}
+```
+
+### Formatting Comment Timestamp
+
+```swift
+func formatTimeAgo(_ date: Date) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .abbreviated
+    return formatter.localizedString(for: date, relativeTo: Date())
+}
+
+// Examples of output:
+// "2m ago" - 2 minutes ago
+// "1h ago" - 1 hour ago
+// "3d ago" - 3 days ago
+```
+
+## Comment Interactions
+
+### Liking a Comment
+
+```swift
+func likeComment(_ comment: inout Comments) {
+    comment.likeCount += 1
+}
+
+func unlikeComment(_ comment: inout Comments) {
+    if comment.likeCount > 0 {
+        comment.likeCount -= 1
+    }
+}
+
+// Usage in tap handler
+@objc func likeTapped(_ sender: UIButton) {
+    var comment = comments[sender.tag]
+    likeComment(&comment)
+    comments[sender.tag] = comment
+    tableView.reloadRows(at: [IndexPath(row: sender.tag, section: 0)], with: .none)
+}
+```
+
+### Sorting Comments
+
+```swift
+// Sort by most recent
+func sortByRecent(_ comments: [Comments]) -> [Comments] {
+    return comments.sorted { $0.timeAgo > $1.timeAgo }
+}
+
+// Sort by most liked
+func sortByPopular(_ comments: [Comments]) -> [Comments] {
+    return comments.sorted { $0.likeCount > $1.likeCount }
+}
+
+// Usage
+let sortedComments = sortByRecent(comments)
+let popularComments = sortByPopular(comments)
+```
+
+## Comment Display Patterns
+
+<Expandable title="Time Formatting Options">
+  There are several ways to display the comment timestamp:
+  
+  1. **Relative Time**: "2 hours ago", "3 days ago"
+  2. **Absolute Time**: "March 15, 2024 at 3:30 PM"
+  3. **Short Format**: "2h", "3d", "1w"
+  
+  ```swift
+  // Relative formatter
+  let relativeFormatter = RelativeDateTimeFormatter()
+  relativeFormatter.unitsStyle = .full
+  let relativeString = relativeFormatter.localizedString(for: comment.timeAgo, relativeTo: Date())
+  
+  // Date formatter
+  let dateFormatter = DateFormatter()
+  dateFormatter.dateStyle = .medium
+  dateFormatter.timeStyle = .short
+  let dateString = dateFormatter.string(from: comment.timeAgo)
+  ```
+</Expandable>
+
+## Loading Comments from Firebase
+
+```swift
+import Firebase
+
+func loadComments(for postID: String, completion: @escaping ([Comments]) -> Void) {
+    let ref = Database.database().reference().child("comments").child(postID)
+    
+    ref.observe(.value) { snapshot in
+        var comments: [Comments] = []
+        
+        for child in snapshot.children {
+            if let snapshot = child as? DataSnapshot,
+               let dict = snapshot.value as? [String: Any] {
+                
+                let name = dict["name"] as? String ?? ""
+                let profilePic = dict["profilePic"] as? String ?? ""
+                let commentText = dict["comment"] as? String ?? ""
+                let timestamp = dict["timestamp"] as? TimeInterval ?? 0
+                let likeCount = dict["likeCount"] as? Int ?? 0
+                
+                let comment = Comments(
+                    name: name,
+                    profilePic: profilePic,
+                    comment: commentText,
+                    timeAgo: Date(timeIntervalSince1970: timestamp),
+                    likeCount: likeCount
+                )
+                
+                comments.append(comment)
+            }
+        }
+        
+        completion(comments)
+    }
+}
+```
+
+## Validation
+
+```swift
+// Validate comment before posting
+func isValidComment(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return !trimmed.isEmpty && trimmed.count <= 500
+}
+
+// Usage
+if isValidComment(commentText) {
+    let comment = createComment(text: commentText, by: currentUser)
+    postComment(comment)
+} else {
+    showError("Comment must be between 1 and 500 characters")
+}
+```
+
+## Comment Cell Configuration
+
+```swift
+class CommentCell: UITableViewCell {
+    @IBOutlet weak var profileImageView: UIImageView!
+    @IBOutlet weak var nameLabel: UILabel!
+    @IBOutlet weak var commentLabel: UILabel!
+    @IBOutlet weak var timeLabel: UILabel!
+    @IBOutlet weak var likeCountLabel: UILabel!
+    @IBOutlet weak var likeButton: UIButton!
+    
+    func configure(with comment: Comments) {
+        nameLabel.text = comment.name
+        commentLabel.text = comment.comment
+        likeCountLabel.text = "\(comment.likeCount)"
+        
+        // Format time
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        timeLabel.text = formatter.localizedString(for: comment.timeAgo, relativeTo: Date())
+        
+        // Load profile image
+        if let url = URL(string: comment.profilePic) {
+            loadImage(from: url, into: profileImageView)
+        }
+    }
+}
+```

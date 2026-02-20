@@ -1,0 +1,215 @@
+---
+title: VideoCacheManager
+description: Singleton manager for caching video data with memory and disk storage using SHA-2 encryption
+---
+
+## Overview
+
+`VideoCacheManager` is a singleton class that provides a two-tier caching system for video data. It uses both in-memory caching (NSCache) and disk-based caching (FileManager) to optimize video loading performance. All disk cache keys are encrypted using SHA-2 hashing for security.
+
+## Singleton Instance
+
+Access the shared instance:
+
+```swift
+let cacheManager = VideoCacheManager.shared
+```
+
+## Properties
+
+<ParamField path="memoryCache" type="NSCache<NSString, AnyObject>?">
+  In-memory cache for quick data retrieval. Named "VideoCache".
+</ParamField>
+
+<ParamField path="diskCache" type="FileManager">
+  File manager instance for disk-based caching operations.
+</ParamField>
+
+<ParamField path="diskDirectoryURL" type="URL?">
+  URL pointing to the disk cache directory located at Documents/VideoCache.
+</ParamField>
+
+<ParamField path="dispatchQueue" type="DispatchQueue?">
+  Serial dispatch queue with label "com.VideoCache" for thread-safe operations.
+</ParamField>
+
+## Methods
+
+### storeDataToCache
+
+Stores video data to both memory and disk cache asynchronously.
+
+```swift
+func storeDataToCache(data: Data?, key: String, fileExtension: String?)
+```
+
+<ParamField path="data" type="Data?">
+  The video data to cache.
+</ParamField>
+
+<ParamField path="key" type="String">
+  Cache key, typically the absolute URL string of the video.
+</ParamField>
+
+<ParamField path="fileExtension" type="String?">
+  Optional file extension (e.g., "mp4") to append to the cached file.
+</ParamField>
+
+**Example:**
+
+```swift
+let videoData = // ... your video data
+let videoURL = "https://example.com/video.mp4"
+
+VideoCacheManager.shared.storeDataToCache(
+    data: videoData,
+    key: videoURL,
+    fileExtension: "mp4"
+)
+```
+
+### queryDataFromCache
+
+Queries video data from cache with a three-tier fallback system:
+1. Check memory cache
+2. Check disk cache (and promote to memory cache if found)
+3. Return nil if not found (caller should download from Firebase)
+
+```swift
+func queryDataFromCache(key: String, fileExtension: String?, completion: @escaping (_ data: Any?) -> Void)
+```
+
+<ParamField path="key" type="String">
+  Cache key, typically the absolute URL string of the video.
+</ParamField>
+
+<ParamField path="fileExtension" type="String?">
+  Optional file extension to match the cached file.
+</ParamField>
+
+<ParamField path="completion" type="(Any?) -> Void">
+  Completion handler called with the cached data or nil if not found.
+</ParamField>
+
+**Example:**
+
+```swift
+let videoURL = "https://example.com/video.mp4"
+
+VideoCacheManager.shared.queryDataFromCache(
+    key: videoURL,
+    fileExtension: "mp4"
+) { data in
+    if let videoData = data as? Data {
+        // Use cached video data
+        print("Video loaded from cache")
+    } else {
+        // Download from Firebase
+        print("Cache miss - need to download")
+    }
+}
+```
+
+### queryURLFromCache
+
+Queries the local file path for a cached video. Synchronously checks if the file exists on disk.
+
+```swift
+func queryURLFromCache(key: String, fileExtension: String?, completion: @escaping (_ data: Any?) -> Void)
+```
+
+<ParamField path="key" type="String">
+  Cache key, typically the absolute URL string of the video.
+</ParamField>
+
+<ParamField path="fileExtension" type="String?">
+  Optional file extension to match the cached file.
+</ParamField>
+
+<ParamField path="completion" type="(Any?) -> Void">
+  Completion handler called with the file path string or nil if not found.
+</ParamField>
+
+**Example:**
+
+```swift
+let videoURL = "https://example.com/video.mp4"
+
+VideoCacheManager.shared.queryURLFromCache(
+    key: videoURL,
+    fileExtension: "mp4"
+) { path in
+    if let filePath = path as? String {
+        let localURL = URL(fileURLWithPath: filePath)
+        // Play video from local file
+        print("Playing from: \(localURL)")
+    } else {
+        print("Video not cached locally")
+    }
+}
+```
+
+### clearCache
+
+Clears all cached data from both memory and disk. Returns the total size of cleared disk cache in MB.
+
+```swift
+func clearCache(completion: @escaping (_ size: String) -> Void)
+```
+
+<ParamField path="completion" type="(String) -> Void">
+  Completion handler called on the main thread with the size of cleared cache in MB.
+</ParamField>
+
+**Example:**
+
+```swift
+VideoCacheManager.shared.clearCache { sizeInMB in
+    print("Cleared \(sizeInMB) MB of cached videos")
+    // Update UI to show freed space
+}
+```
+
+## SHA-2 Encryption
+
+The cache manager uses SHA-256 hashing to encrypt cache keys for secure file naming. This ensures:
+
+- **Security**: Original URLs are not exposed in the file system
+- **Consistency**: Same URL always maps to the same cache file
+- **Collision Resistance**: Different URLs won't overwrite each other
+
+**Implementation:**
+
+```swift
+private func sha2(key: String) -> String {
+    let inputData = Data(key.utf8)
+    let hashed = SHA256.hash(data: inputData)
+    let hashString = hashed.compactMap { String(format: "%02x", $0) }.joined()
+    return hashString
+}
+```
+
+The encrypted filename is then used as the disk cache path:
+
+```swift
+private func diskCachePathForKey(key: String, fileExtension: String?) -> String? {
+    let fileName = sha2(key: key)
+    var cachePathForKey = diskDirectoryURL?.appendingPathComponent(fileName).path
+    if let fileExtension = fileExtension {
+        cachePathForKey = cachePathForKey! + "." + fileExtension
+    }
+    return cachePathForKey
+}
+```
+
+## Cache Hierarchy
+
+The caching system follows this hierarchy:
+
+1. **Memory Cache (NSCache)**: Fast access, limited by system memory
+2. **Disk Cache (FileManager)**: Persistent storage in Documents/VideoCache
+3. **Firebase Storage**: Remote fallback when cache misses occur
+
+## Thread Safety
+
+All cache operations are performed on a dedicated serial dispatch queue (`com.VideoCache`) to ensure thread safety and prevent race conditions during concurrent access.

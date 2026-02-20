@@ -1,0 +1,305 @@
+---
+title: "HomeViewController"
+description: "Main video feed controller implementing vertical scrolling TikTok-style video playback with table view pagination"
+---
+
+## Overview
+
+`HomeViewController` is the primary view controller for the app's video feed, displaying an infinite scroll of video posts in a full-screen, paginated table view. It uses MVVM architecture with `HomeViewModel` and RxSwift for reactive data binding.
+
+**Location**: `KD Tiktok-Clone/Modules/Home/HomeViewController.swift`
+
+## Key Components
+
+### UI Components
+
+<ParamField path="mainTableView" type="UITableView">
+  Full-screen table view with paging enabled for vertical video scrolling. Each cell occupies the entire screen height and displays a single video post.
+</ParamField>
+
+<ParamField path="loadingAnimation" type="AnimationView">
+  Lottie animation view that displays a loading indicator while fetching posts from Firebase. Positioned at center with 55pt dimensions.
+</ParamField>
+
+### Properties
+
+<ParamField path="viewModel" type="HomeViewModel">
+  View model handling business logic, data fetching from Firebase, and audio session management.
+</ParamField>
+
+<ParamField path="currentIndex" type="Int">
+  Dynamic property tracking the currently visible video index. Marked with `@objc dynamic` for KVO observation.
+</ParamField>
+
+<ParamField path="data" type="[Post]">
+  Array of Post objects representing video feed data, populated from Firebase Firestore.
+</ParamField>
+
+<ParamField path="disposeBag" type="DisposeBag">
+  RxSwift dispose bag for managing observable subscriptions and preventing memory leaks.
+</ParamField>
+
+## Core Methods
+
+### setupView()
+
+Configures the main table view with full-screen layout and paging behavior.
+
+```swift
+func setupView() {
+    mainTableView = UITableView()
+    mainTableView.backgroundColor = .black
+    mainTableView.isPagingEnabled = true
+    mainTableView.contentInsetAdjustmentBehavior = .never
+    mainTableView.showsVerticalScrollIndicator = false
+    mainTableView.separatorStyle = .none
+    
+    view.addSubview(mainTableView)
+    mainTableView.snp.makeConstraints({ make in
+        make.edges.equalToSuperview()
+    })
+    
+    mainTableView.register(UINib(nibName: "HomeTableViewCell", bundle: nil), 
+                          forCellReuseIdentifier: cellId)
+    mainTableView.delegate = self
+    mainTableView.dataSource = self
+    mainTableView.prefetchDataSource = self
+}
+```
+
+<Note>
+  The table view uses `isPagingEnabled = true` to snap to full-screen cells, creating the signature TikTok scrolling experience.
+</Note>
+
+### setupBinding()
+
+Establishes RxSwift bindings between the view model and UI components.
+
+```swift
+func setupBinding() {
+    // Observe posts from view model
+    viewModel.posts
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { posts in
+            self.data = posts
+            self.mainTableView.reloadData()
+        }).disposed(by: disposeBag)
+    
+    // Observe loading state
+    viewModel.isLoading
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { isLoading in
+            if isLoading {
+                self.loadingAnimation.alpha = 1
+                self.loadingAnimation.play()
+            } else {
+                self.loadingAnimation.alpha = 0
+                self.loadingAnimation.stop()
+            }
+        }).disposed(by: disposeBag)
+    
+    // Observe errors
+    viewModel.error
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { err in
+            self.showAlert(err.localizedDescription)
+        }).disposed(by: disposeBag)
+}
+```
+
+### Lifecycle Methods
+
+<ParamField path="viewWillAppear(_:)" type="override func">
+  Resumes video playback for the currently visible cell when the view appears.
+  
+  ```swift
+  override func viewWillAppear(_ animated: Bool) {
+      super.viewWillAppear(animated)
+      if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+          cell.play()
+      }
+  }
+  ```
+</ParamField>
+
+<ParamField path="viewWillDisappear(_:)" type="override func">
+  Pauses video playback when navigating away to preserve resources.
+  
+  ```swift
+  override func viewWillDisappear(_ animated: Bool) {
+      super.viewWillDisappear(animated)
+      if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+          cell.pause()
+      }
+  }
+  ```
+</ParamField>
+
+## Table View Implementation
+
+### UITableViewDataSource
+
+```swift
+func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    return self.data.count
+}
+
+func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: cellId, for: indexPath) as! HomeTableViewCell
+    cell.configure(post: data[indexPath.row])
+    cell.delegate = self
+    return cell
+}
+
+func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+    return tableView.frame.height
+}
+```
+
+<Note>
+  Each cell height equals the table view's full height, ensuring one video fills the entire screen.
+</Note>
+
+### UITableViewDelegate
+
+<ParamField path="willDisplay cell" type="delegate method">
+  Called before a cell appears. Updates `currentIndex` and pauses the video until scrolling ends.
+  
+  ```swift
+  func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+      if let cell = cell as? HomeTableViewCell {
+          oldAndNewIndices.1 = indexPath.row
+          currentIndex = indexPath.row
+          cell.pause()
+      }
+  }
+  ```
+</ParamField>
+
+<ParamField path="didEndDisplaying cell" type="delegate method">
+  Pauses video when cell scrolls out of view to prevent background playback and save resources.
+</ParamField>
+
+### UIScrollViewDelegate
+
+```swift
+func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+    let cell = self.mainTableView.cellForRow(at: IndexPath(row: self.currentIndex, section: 0)) as? HomeTableViewCell
+    cell?.replay()
+}
+```
+
+<Note>
+  When scrolling ends, the current video automatically replays, maintaining continuous playback.
+</Note>
+
+## Navigation
+
+### HomeCellNavigationDelegate
+
+Implements navigation to user profile pages from video cells.
+
+```swift
+func navigateToProfilePage(uid: String, name: String) {
+    self.navigationController?.pushViewController(ProfileViewController(), animated: true)
+}
+```
+
+## HomeViewModel
+
+**Location**: `KD Tiktok-Clone/Modules/Home/HomeViewModel.swift`
+
+Handles business logic and data management for the home feed.
+
+### Properties
+
+<ParamField path="isLoading" type="BehaviorSubject<Bool>">
+  Observable emitting loading state changes for UI updates.
+</ParamField>
+
+<ParamField path="posts" type="PublishSubject<[Post]>">
+  Observable stream of Post arrays fetched from Firebase.
+</ParamField>
+
+<ParamField path="error" type="PublishSubject<Error>">
+  Observable error stream for handling fetch failures.
+</ParamField>
+
+### Methods
+
+<ParamField path="setAudioMode()" type="func">
+  Configures AVAudioSession for video playback with `.playback` category and `.moviePlayback` mode.
+  
+  ```swift
+  func setAudioMode() {
+      do {
+          try! AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+          try AVAudioSession.sharedInstance().setActive(true)
+      } catch (let err) {
+          print("setAudioMode error:" + err.localizedDescription)
+      }
+  }
+  ```
+</ParamField>
+
+<ParamField path="getPosts(pageNumber:size:)" type="func">
+  Fetches paginated posts from Firebase Firestore.
+  
+  ```swift
+  func getPosts(pageNumber: Int, size: Int) {
+      self.isLoading.onNext(true)
+      PostsRequest.getPostsByPages(pageNumber: pageNumber, size: size, success: { data in
+          if let data = data as? QuerySnapshot {
+              for document in data.documents {
+                  var post = Post(dictionary: document.data())
+                  post.id = document.documentID
+                  self.docs.append(post)
+              }
+              self.posts.onNext(self.docs)
+              self.isLoading.onNext(false)
+          }
+      }, failure: { error in
+          self.isLoading.onNext(false)
+          self.error.onNext(error)
+      })
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```swift
+// Initialize HomeViewController
+let homeVC = HomeViewController()
+
+// Access from tab bar controller
+let tabBarController = UITabBarController()
+tabBarController.viewControllers = [homeVC, ...]
+
+// Navigate to profile from cell
+extension HomeViewController: HomeCellNavigationDelegate {
+    func navigateToProfilePage(uid: String, name: String) {
+        let profileVC = ProfileViewController()
+        navigationController?.pushViewController(profileVC, animated: true)
+    }
+}
+```
+
+## Dependencies
+
+- **UIKit**: Core UI framework
+- **SnapKit**: Auto Layout DSL
+- **AVFoundation**: Audio session management
+- **RxSwift**: Reactive programming for data binding
+- **Lottie**: Animation support
+- **Firebase Firestore**: Backend data storage
+
+## Related Components
+
+- `HomeTableViewCell`: Custom cell displaying individual video posts
+- `Post`: Data model representing video post entities
+- `PostsRequest`: Network layer for Firebase queries
+- `ProfileViewController`: User profile view

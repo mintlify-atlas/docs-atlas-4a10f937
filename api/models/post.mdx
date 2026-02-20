@@ -1,0 +1,176 @@
+---
+title: "Post"
+description: "Represents a video post in the TikTok clone app with associated metadata, author information, and engagement metrics."
+---
+
+## Overview
+
+The `Post` struct is the core data model for video content in the app. It conforms to `Codable` for easy serialization and includes video properties, author details, and social engagement metrics.
+
+## Properties
+
+<ParamField path="id" type="String" required>
+  Unique identifier for the post
+</ParamField>
+
+<ParamField path="video" type="String" required>
+  Video file name or reference string
+</ParamField>
+
+<ParamField path="videoURL" type="URL" optional>
+  Full URL to the video file. Defaults to empty file URL if not provided.
+</ParamField>
+
+<ParamField path="videoFileExtension" type="String" optional>
+  File extension of the video. Defaults to "mp4" if not provided.
+</ParamField>
+
+<ParamField path="videoHeight" type="Int" required>
+  Height of the video in pixels
+</ParamField>
+
+<ParamField path="videoWidth" type="Int" required>
+  Width of the video in pixels
+</ParamField>
+
+<ParamField path="autherID" type="String" required>
+  Unique identifier of the post author. Mapped from "author" in JSON.
+</ParamField>
+
+<ParamField path="autherName" type="String" required>
+  Display name of the post author
+</ParamField>
+
+<ParamField path="caption" type="String" required>
+  Text caption or description for the post
+</ParamField>
+
+<ParamField path="music" type="String" required>
+  Music track or audio identifier associated with the video
+</ParamField>
+
+<ParamField path="likeCount" type="Int" required>
+  Number of likes the post has received
+</ParamField>
+
+<ParamField path="shareCount" type="Int" required>
+  Number of times the post has been shared
+</ParamField>
+
+<ParamField path="commentID" type="String" required>
+  Identifier linking to the post's comments collection
+</ParamField>
+
+## Initializers
+
+### Standard Initialization
+
+```swift
+let post = Post(
+    id: "post123",
+    video: "video_file.mp4",
+    videoURL: URL(string: "https://example.com/video.mp4"),
+    videoFileExtension: "mp4",
+    videoHeight: 1920,
+    videoWidth: 1080,
+    autherID: "user456",
+    autherName: "John Doe",
+    caption: "Check out this amazing video!",
+    music: "song_xyz",
+    likeCount: 1250,
+    shareCount: 45,
+    commentID: "comments789"
+)
+```
+
+### Dictionary Initialization
+
+Create a Post from a dictionary (useful for Firebase or API responses):
+
+```swift
+let dict: [String: Any] = [
+    "id": "post123",
+    "video": "video_file.mp4",
+    "videoURL": "https://example.com/video.mp4",
+    "videoHeight": 1920,
+    "videoWidth": 1080,
+    "author": "user456",
+    "autherName": "John Doe",
+    "caption": "Amazing video!",
+    "music": "song_xyz",
+    "likeCount": 1250,
+    "shareCount": 45,
+    "commentID": "comments789"
+]
+
+let post = Post(dictionary: dict)
+```
+
+## Methods
+
+<ResponseField name="dictionary" type="[String: Any]">
+  Computed property that converts the Post instance to a dictionary representation. Returns an empty dictionary if encoding fails.
+  
+  ```swift
+  let post = Post(...)
+  let postDict = post.dictionary
+  // Use for Firebase or API uploads
+  ```
+</ResponseField>
+
+## Codable Conformance
+
+The Post struct conforms to `Codable`, allowing easy encoding and decoding:
+
+```swift
+// Encoding
+let encoder = JSONEncoder()
+if let jsonData = try? encoder.encode(post) {
+    // Send jsonData to server
+}
+
+// Decoding
+let decoder = JSONDecoder()
+if let post = try? decoder.decode(Post.self, from: jsonData) {
+    // Use the decoded post
+}
+```
+
+<Expandable title="CodingKeys Mapping">
+  The `autherID` property is mapped from the "author" key in JSON:
+  
+  ```swift
+  enum CodingKeys: String, CodingKey {
+      case autherID = "author"
+      // Other keys map directly
+  }
+  ```
+</Expandable>
+
+## Usage Example
+
+```swift
+import Foundation
+import AVFoundation
+
+// Create a new post
+let newPost = Post(
+    id: UUID().uuidString,
+    video: "my_video.mp4",
+    videoURL: URL(string: "https://storage.example.com/videos/my_video.mp4"),
+    videoFileExtension: "mp4",
+    videoHeight: 1920,
+    videoWidth: 1080,
+    autherID: currentUser.uid,
+    autherName: currentUser.name,
+    caption: "Dancing in the rain! #fun #dance",
+    music: "rain_song_123",
+    likeCount: 0,
+    shareCount: 0,
+    commentID: "comment_collection_xyz"
+)
+
+// Convert to dictionary for Firebase
+let postData = newPost.dictionary
+firebaseRef.child("posts").child(newPost.id).setValue(postData)
+```

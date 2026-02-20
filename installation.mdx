@@ -1,0 +1,369 @@
+---
+title: Installation
+description: Set up your development environment, install dependencies with CocoaPods, and build the TikTok Clone iOS app
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your macOS machine:
+
+<CardGroup cols={2}>
+  <Card title="Xcode" icon="apple">
+    Xcode 12.0 or later with iOS 14.0+ SDK
+  </Card>
+  <Card title="CocoaPods" icon="box">
+    Dependency manager for Swift and Objective-C projects
+  </Card>
+  <Card title="Git" icon="code-branch">
+    Version control for cloning the repository
+  </Card>
+  <Card title="Firebase Account" icon="fire">
+    Free Firebase account for backend services
+  </Card>
+</CardGroup>
+
+<Note>
+  This app requires **iOS 14.0 or later** as the deployment target. Make sure your development device or simulator is running a compatible version.
+</Note>
+
+## Step 1: Clone the Repository
+
+Start by cloning the TikTok Clone repository to your local machine:
+
+<Steps>
+  <Step title="Open Terminal">
+    Navigate to the directory where you want to store the project:
+    
+    ```bash
+    cd ~/Developer
+    ```
+  </Step>
+  
+  <Step title="Clone the repository">
+    Clone the project from GitHub:
+    
+    ```bash
+    git clone https://github.com/dks333/Tiktok-Clone.git
+    cd Tiktok-Clone/KD\ Tiktok-Clone
+    ```
+  </Step>
+  
+  <Step title="Verify project structure">
+    Check that all files are present:
+    
+    ```bash
+    ls -la
+    ```
+    
+    You should see:
+    - `Podfile` - CocoaPods dependency file
+    - `KD Tiktok-Clone.xcodeproj` - Xcode project
+    - `KD Tiktok-Clone/` - Source code directory
+  </Step>
+</Steps>
+
+## Step 2: Install CocoaPods
+
+CocoaPods is required to manage third-party dependencies. If you don't have it installed:
+
+```bash
+sudo gem install cocoapods
+```
+
+<Note>
+  You may need to enter your macOS password when using `sudo`.
+</Note>
+
+Verify the installation:
+
+```bash
+pod --version
+```
+
+## Step 3: Install Dependencies
+
+The project uses several third-party libraries managed by CocoaPods:
+
+<Steps>
+  <Step title="Navigate to project directory">
+    Make sure you're in the directory containing the `Podfile`:
+    
+    ```bash
+    cd "KD Tiktok-Clone"
+    ```
+  </Step>
+  
+  <Step title="Install pods">
+    Run CocoaPods to install all dependencies:
+    
+    ```bash
+    pod install
+    ```
+    
+    This will install:
+    - **SnapKit** - DSL for Auto Layout
+    - **RxSwift** - Reactive programming framework
+    - **MarqueeLabel** - Scrolling text labels
+    - **Lottie** - Animation library
+    - **Firebase/Analytics** - User analytics
+    - **Firebase/Storage** - Video storage
+    - **Firebase/Firestore** - NoSQL database
+    
+    <Note>
+      The first pod install may take several minutes as it downloads all dependencies.
+    </Note>
+  </Step>
+  
+  <Step title="Verify installation">
+    After installation completes, you should see:
+    
+    ```
+    Pod installation complete! There are X dependencies from the Podfile.
+    ```
+    
+    You'll also notice a new file: `KD Tiktok-Clone.xcworkspace`
+  </Step>
+</Steps>
+
+### Podfile Configuration
+
+Here's what the `Podfile` looks like:
+
+```ruby Podfile
+target 'KD Tiktok-Clone' do
+  use_frameworks!
+  inhibit_all_warnings!
+
+  # Pods for KD Tiktok-Clone
+  pod 'SnapKit'
+  pod 'RxSwift', '~> 5'
+  pod 'MarqueeLabel'
+  pod 'lottie-ios'
+  
+  # Database
+  pod 'Firebase/Analytics'
+  pod 'Firebase/Storage'
+  pod 'Firebase/Firestore'
+end
+```
+
+<Warning>
+  **Always open the `.xcworkspace` file, NOT the `.xcodeproj` file** after running `pod install`. The workspace contains both your project and the Pods project.
+</Warning>
+
+## Step 4: Open the Project in Xcode
+
+Now that dependencies are installed, open the project:
+
+```bash
+open "KD Tiktok-Clone.xcworkspace"
+```
+
+Alternatively, you can:
+1. Launch Xcode
+2. Select **File → Open**
+3. Navigate to `KD Tiktok-Clone.xcworkspace` and open it
+
+## Step 5: Configure Xcode Project Settings
+
+<Steps>
+  <Step title="Select the project">
+    In Xcode's Project Navigator (left sidebar), click on the top-level **KD Tiktok-Clone** project file.
+  </Step>
+  
+  <Step title="Update Bundle Identifier">
+    1. Select the **KD Tiktok-Clone** target
+    2. Go to the **Signing & Capabilities** tab
+    3. Change the **Bundle Identifier** to something unique:
+    
+    ```
+    com.yourname.tiktok-clone
+    ```
+    
+    <Note>
+      This must be unique and match the bundle ID you'll configure in Firebase later.
+    </Note>
+  </Step>
+  
+  <Step title="Configure Team & Signing">
+    1. Under **Team**, select your Apple Developer account
+    2. Check **Automatically manage signing**
+    3. Xcode will automatically generate provisioning profiles
+    
+    <Warning>
+      You need a (free) Apple Developer account to run the app on a physical device. Simulator testing doesn't require this.
+    </Warning>
+  </Step>
+  
+  <Step title="Set deployment target">
+    1. Go to the **General** tab
+    2. Under **Deployment Info**, ensure:
+       - **iOS** is set to **14.0** or later
+       - **iPhone** is selected as the device type
+  </Step>
+</Steps>
+
+## Step 6: Add Firebase Configuration
+
+Before building, you need to add your Firebase configuration file:
+
+<Warning>
+  The app **will not compile** without a valid `GoogleService-Info.plist` file. Follow the [Firebase Setup](/firebase-setup) guide first.
+</Warning>
+
+<Steps>
+  <Step title="Download GoogleService-Info.plist">
+    From your Firebase Console, download the `GoogleService-Info.plist` file.
+  </Step>
+  
+  <Step title="Add to Xcode project">
+    1. In Xcode, right-click the **KD Tiktok-Clone** folder
+    2. Select **Add Files to "KD Tiktok-Clone"...**
+    3. Choose your `GoogleService-Info.plist` file
+    4. Make sure **"Copy items if needed"** is checked
+    5. Click **Add**
+  </Step>
+  
+  <Step title="Verify placement">
+    The file should be in the **Utils/** folder:
+    
+    ```
+    KD Tiktok-Clone/
+    └── Utils/
+        └── GoogleService-Info.plist
+    ```
+  </Step>
+</Steps>
+
+## Step 7: Build and Run
+
+You're ready to build the app!
+
+<Steps>
+  <Step title="Select a simulator or device">
+    At the top of Xcode, click the device selector and choose:
+    - **iPhone 14 Pro** (simulator) for testing
+    - Your physical iPhone if connected
+  </Step>
+  
+  <Step title="Build the project">
+    Press **⌘ + B** or select **Product → Build**
+    
+    The build process will:
+    1. Compile Swift source files
+    2. Link frameworks and dependencies
+    3. Process storyboards and assets
+    4. Generate the app binary
+  </Step>
+  
+  <Step title="Run the app">
+    Press **⌘ + R** or click the **Run** button (▶️)
+    
+    The app will launch in the simulator or on your device.
+  </Step>
+</Steps>
+
+### Firebase Initialization
+
+When the app launches, Firebase is automatically configured in `AppDelegate.swift`:
+
+```swift AppDelegate.swift:17-21
+func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    // Override point for customization after application launch.
+    FirebaseApp.configure()
+    return true
+}
+```
+
+## Troubleshooting
+
+### Build Errors
+
+<AccordionGroup>
+  <Accordion title="Error: No such module 'Firebase'">
+    **Solution**: Run `pod install` again and make sure you're opening the `.xcworkspace` file, not `.xcodeproj`.
+    
+    ```bash
+    pod install
+    open "KD Tiktok-Clone.xcworkspace"
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: GoogleService-Info.plist not found">
+    **Solution**: Make sure you've added the Firebase configuration file to your project. See [Step 6](#step-6-add-firebase-configuration).
+  </Accordion>
+  
+  <Accordion title="Signing Error: Failed to register bundle identifier">
+    **Solution**: Change your Bundle Identifier to something unique in **Signing & Capabilities**.
+  </Accordion>
+  
+  <Accordion title="Pod install fails with 'unable to find cocoapods version'">
+    **Solution**: Update CocoaPods:
+    
+    ```bash
+    sudo gem install cocoapods
+    pod repo update
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Runtime Issues
+
+<AccordionGroup>
+  <Accordion title="App crashes on launch">
+    **Solution**: Check the Xcode console for errors. Common causes:
+    - Missing Firebase configuration
+    - Invalid Bundle Identifier in Firebase Console
+    - Network connectivity issues
+  </Accordion>
+  
+  <Accordion title="Videos not loading">
+    **Solution**: Ensure:
+    - Firebase Storage is properly configured
+    - You have posts in your Firestore database
+    - Network permissions are granted in Info.plist
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Firebase Setup"
+    icon="fire"
+    href="/firebase-setup"
+  >
+    Configure Firebase Storage, Firestore, and Analytics
+  </Card>
+  <Card
+    title="Architecture Overview"
+    icon="layer-group"
+    href="/architecture"
+  >
+    Learn about the app's MVVM architecture and code structure
+  </Card>
+</CardGroup>
+
+## Clean Build
+
+If you encounter persistent issues, try a clean build:
+
+```bash
+# Clean derived data
+rm -rf ~/Library/Developer/Xcode/DerivedData/KD\ Tiktok-Clone-*
+
+# Clean pods
+rm -rf Pods/
+rm Podfile.lock
+
+# Reinstall
+pod install
+```
+
+Then in Xcode:
+1. **Product → Clean Build Folder** (⌘ + Shift + K)
+2. **Product → Build** (⌘ + B)
+
+<Note>
+  If you make changes to the Podfile, always run `pod install` again to update dependencies.
+</Note>

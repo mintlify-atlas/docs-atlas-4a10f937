@@ -1,0 +1,258 @@
+---
+title: Introduction
+description: A feature-rich TikTok clone built with Swift and Firebase, featuring full-screen video feeds, advanced caching, and social interactions
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="TikTok Clone Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="TikTok Clone Hero Dark"
+/>
+
+# Welcome to TikTok Clone
+
+A production-ready iOS TikTok clone built with **Swift** for the frontend and **Firebase** for the backend. This project replicates both the Chinese (Douyin) and U.S. versions of TikTok, featuring smooth video playback, advanced caching strategies, and a complete social media experience.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card
+    title="Full-Screen Video Feed"
+    icon="film"
+    href="#video-playback"
+  >
+    Infinite scroll with paginated loading, smooth transitions, and automatic playback management
+  </Card>
+  <Card
+    title="Video Recording & Upload"
+    icon="video"
+    href="#video-upload"
+  >
+    Record videos with AVFoundation, upload to Firebase Storage, and publish to Firestore
+  </Card>
+  <Card
+    title="Two-Level Video Caching"
+    icon="database"
+    href="#caching-system"
+  >
+    Memory + disk caching with SHA-2 encryption for optimal performance and offline support
+  </Card>
+  <Card
+    title="User Profiles"
+    icon="user"
+    href="#user-profiles"
+  >
+    Stretchy headers, video grids, and profile customization with animated backgrounds
+  </Card>
+  <Card
+    title="Social Interactions"
+    icon="heart"
+    href="#social-features"
+  >
+    Likes, comments, shares, and real-time engagement tracking
+  </Card>
+  <Card
+    title="MVVM Architecture"
+    icon="layer-group"
+    href="#architecture"
+  >
+    Clean separation of concerns with RxSwift for reactive data binding
+  </Card>
+</CardGroup>
+
+## Video Playback
+
+The home feed uses a `UITableView` with full-screen cells, each containing an `AVPlayer` for smooth video playback. Videos are pre-fetched and cached to ensure seamless scrolling.
+
+```swift HomeViewController.swift:73-80
+mainTableView.isPagingEnabled = true
+mainTableView.contentInsetAdjustmentBehavior = .never
+mainTableView.showsVerticalScrollIndicator = false
+mainTableView.separatorStyle = .none
+mainTableView.delegate = self
+mainTableView.dataSource = self
+mainTableView.prefetchDataSource = self
+```
+
+<Note>
+  The table view uses paging to snap to full-screen videos, mimicking TikTok's signature scrolling behavior.
+</Note>
+
+## Video Upload
+
+Videos are recorded using `AVCaptureSession`, saved locally, and uploaded to Firebase Storage. The download URL is then stored in Firestore along with post metadata.
+
+```swift VideoPostRequest.swift:37-52
+let videoRef = Storage.storage().reference().child("Videos/\(post.video)")
+let _ = videoRef.putFile(from: videoURL, metadata: nil) { metadata, error in
+    if let error = error {
+        failure(error)
+        return
+    }
+    guard let metadata = metadata else { return }
+    let size = metadata.size / 1024 / 1024
+    print("File Size: \(size)MB")
+    videoRef.downloadURL { (url, error) in
+        guard let downloadURL = url else { return }
+        var tempPost = post
+        tempPost.videoURL = downloadURL
+        _publishPostToDatabase(post: tempPost)
+    }
+}
+```
+
+## Caching System
+
+The `VideoCacheManager` implements a sophisticated two-level caching strategy:
+
+1. **Memory Cache**: Using `NSCache` for instant access to recently viewed videos
+2. **Disk Cache**: File-based storage with SHA-2 encrypted filenames for security
+
+```swift VideoCacheManager.swift:76-85
+func queryDataFromCache(key: String, fileExtension: String?, completion: @escaping (_ data: Any?) -> Void){
+    if let data = dataFromMemoryCache(key: key) {
+        completion(data)
+    } else if let data = dataFromDiskCache(key: key, fileExtension: fileExtension) {
+        storeDataToMemoryCache(data: data, key: key)
+        completion(data)
+    } else {
+        completion(nil)
+    }
+}
+```
+
+<Note>
+  Cache queries follow a waterfall pattern: memory → disk → Firebase download
+</Note>
+
+## User Profiles
+
+Profile pages feature a stretchy header effect that scales when pulled down, implemented with custom `UICollectionViewFlowLayout`.
+
+```swift ProfileViewController.swift:159-163
+func stretchProfileBackgroundWhenScroll(offsetY: CGFloat)  {
+    let scaleRatio: CGFloat = abs(offsetY)/500.0
+    let scaledHeight: CGFloat = scaleRatio * profileBackgroundImgView.frame.height
+    profileBackgroundImgView.transform = CGAffineTransform.init(scaleX: scaleRatio + 1.0, y: scaleRatio + 1.0).concatenating(CGAffineTransform.init(translationX: 0, y: scaledHeight))
+}
+```
+
+## Social Features
+
+The app includes a complete social layer with:
+
+- **Likes & Shares**: Real-time counters stored in Firestore
+- **Comments**: Pop-up view with `UITableView` for threaded discussions
+- **User Interactions**: Profile navigation, follow/unfollow functionality
+
+```swift Post.swift:13-27
+struct Post: Codable{
+    var id: String
+    var video: String
+    var videoURL: URL?
+    var videoFileExtension: String?
+    var videoHeight: Int
+    var videoWidth: Int
+    var autherID: String
+    var autherName: String
+    var caption: String
+    var music: String
+    var likeCount: Int
+    var shareCount: Int
+    var commentID: String
+}
+```
+
+## Architecture
+
+The app follows MVVM (Model-View-ViewModel) architecture with RxSwift for reactive programming:
+
+- **Models**: `Post`, `User`, `Comment` structs with Codable conformance
+- **Views**: UIKit components with programmatic layouts using SnapKit
+- **ViewModels**: Business logic with RxSwift observables for data binding
+
+```swift HomeViewModel.swift:20-22
+let isLoading = BehaviorSubject<Bool>(value: true)
+let posts = PublishSubject<[Post]>()
+let error = PublishSubject<Error>()
+```
+
+<Warning>
+  The app uses Firebase Anonymous Authentication. In production, implement proper user authentication with Firebase Auth.
+</Warning>
+
+## Tech Stack
+
+<CardGroup cols={2}>
+  <Card title="Swift" icon="apple">
+    Modern Swift 5+ with UIKit for UI development
+  </Card>
+  <Card title="Firebase" icon="fire">
+    Firestore for database, Storage for videos, Analytics for tracking
+  </Card>
+  <Card title="RxSwift" icon="arrows-rotate">
+    Reactive programming for clean data flow and binding
+  </Card>
+  <Card title="SnapKit" icon="ruler">
+    DSL for programmatic Auto Layout constraints
+  </Card>
+  <Card title="Lottie" icon="wand-magic-sparkles">
+    Beautiful loading animations and micro-interactions
+  </Card>
+  <Card title="AVFoundation" icon="camera">
+    Video recording, playback, and processing
+  </Card>
+</CardGroup>
+
+## Get Started
+
+Ready to build and run the app? Follow these guides to set up your development environment:
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install dependencies, set up Xcode, and build the project
+  </Card>
+  <Card
+    title="Firebase Setup"
+    icon="fire"
+    href="/firebase-setup"
+  >
+    Configure Firebase services: Storage, Firestore, and Analytics
+  </Card>
+</CardGroup>
+
+## Project Structure
+
+```
+KD Tiktok-Clone/
+├── Entity/
+│   ├── Models/           # Data models (Post, User, Comment)
+│   └── VideoCache/       # Two-level caching system
+├── Modules/
+│   ├── Home/            # Video feed and playback
+│   ├── Media/           # Video recording and upload
+│   ├── Profile/         # User profiles with stretchy headers
+│   ├── Discover/        # Search and explore
+│   └── Inbox/           # Messages and notifications
+├── Network/
+│   ├── GetRequests/     # Firebase data fetching
+│   └── PostRequests/    # Video upload and publishing
+└── Extensions/          # UIKit helpers and utilities
+```
+
+## Open Source
+
+This project is open source and available on GitHub. Feel free to explore the code, report issues, or contribute improvements!
+
+<Note>
+  This is an educational project demonstrating iOS development best practices. Some features are simplified for learning purposes.
+</Note>

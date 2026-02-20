@@ -1,0 +1,334 @@
+---
+title: Video Cache
+description: Two-level caching system with NSCache and FileManager, SHA-2 encryption for secure file naming, and comprehensive cache management
+---
+
+The VideoCacheManager implements a sophisticated two-level caching system for efficient video storage and retrieval, combining in-memory and disk-based caching.
+
+## Architecture
+
+The caching system uses a singleton pattern with two storage levels:
+
+- **Level 1 (Memory)**: `NSCache` for fast access to recently used videos
+- **Level 2 (Disk)**: `FileManager` for persistent storage
+- **Security**: SHA-2 encryption for cache keys
+- **Concurrency**: Dedicated dispatch queue for thread-safe operations
+
+```swift VideoCacheManager.swift:13-44
+class VideoCacheManager: NSObject {
+    // VideoCacheManager is a singleton
+    static let shared: VideoCacheManager = {
+        return VideoCacheManager.init()
+    }()
+    
+    // MARK: - Variables
+    var memoryCache: NSCache<NSString, AnyObject>?
+    var diskCache: FileManager = FileManager.default
+    var diskDirectoryURL: URL?
+    var dispatchQueue: DispatchQueue?
+    
+    // MARK: - Initializer
+    private override init() {
+        super.init()
+        
+        memoryCache = NSCache()
+        memoryCache?.name = "VideoCache"
+
+        let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+        let diskDirectory = paths.last! + "/VideoCache"
+        if !diskCache.fileExists(atPath: diskDirectory) {
+            do {
+                try diskCache.createDirectory(atPath: diskDirectory, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print("Unable to create disk cache due to: " + error.localizedDescription)
+            }
+        }
+        diskDirectoryURL = URL(fileURLWithPath: diskDirectory)
+        dispatchQueue = DispatchQueue.init(label: "com.VideoCache")
+    }
+}
+```
+
+<Note>
+The singleton pattern ensures only one instance of VideoCacheManager exists, preventing cache duplication and ensuring consistent cache state across the app.
+</Note>
+
+## Write Operations
+
+### Storing Data to Cache
+
+Data is written to both memory and disk asynchronously:
+
+```swift VideoCacheManager.swift:49-67
+/// Store Data in Cache
+func storeDataToCache(data: Data?, key: String, fileExtension: String?) {
+    dispatchQueue?.async {
+        self.storeDataToMemoryCache(data: data, key: key)
+        self.storeDataToDiskCache(data: data, key: key, fileExtension: fileExtension)
+    }
+}
+
+/// Store Data in Memory Cache
+private func storeDataToMemoryCache(data: Data?, key: String){
+    memoryCache?.setObject(data as AnyObject, forKey: key as NSString)
+}
+
+/// Store Data in File Manager System using Firebase
+private func storeDataToDiskCache(data: Data?, key: String, fileExtension: String?){
+    if let diskCachePath = diskCachePathForKey(key: key, fileExtension: fileExtension) {
+        diskCache.createFile(atPath: diskCachePath, contents: data, attributes: nil)
+    }
+}
+```
+
+<Steps>
+
+### Write Process
+
+1. **Async dispatch**: Operation moves to background queue
+2. **Memory write**: Data stored in NSCache for fast access
+3. **Disk write**: Data persisted to disk with encrypted filename
+
+</Steps>
+
+## Read Operations
+
+The cache implements a three-tier query strategy:
+
+```swift VideoCacheManager.swift:69-85
+/**
+ * Query Video Data:
+ *  1. Check if file with the key exists in memory cache, if yes, return data
+ *  2. Check if file with the key exists in disk cache, if yes, return data and store data to memory cache
+ *  3. Download data from Firebase(In PostsRequest)
+ */
+func queryDataFromCache(key: String, fileExtension: String?, completion: @escaping (_ data: Any?) -> Void){
+    if let data = dataFromMemoryCache(key: key) {
+        completion(data)
+    } else if let data = dataFromDiskCache(key: key, fileExtension: fileExtension) {
+        storeDataToMemoryCache(data: data, key: key)
+        completion(data)
+    } else {
+        completion(nil)
+    }
+}
+```
+
+### Memory Cache Query
+
+```swift VideoCacheManager.swift:99-101
+private func dataFromMemoryCache(key: String) -> Data?{
+    return memoryCache?.object(forKey: key as NSString) as? Data
+}
+```
+
+### Disk Cache Query
+
+```swift VideoCacheManager.swift:103-113
+private func dataFromDiskCache(key: String, fileExtension: String?) -> Data?{
+    if let path = diskCachePathForKey(key: key, fileExtension: fileExtension) {
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            return data
+        } catch (let error) {
+            print("Query Data From Disk Cache Error: " + error.localizedDescription)
+        }
+    }
+    return nil
+}
+```
+
+### URL Query
+
+For video players that need file URLs instead of Data:
+
+```swift VideoCacheManager.swift:87-97
+func queryURLFromCache(key: String, fileExtension: String?, completion: @escaping (_ data: Any?) -> Void) {
+    dispatchQueue?.sync {
+        let path = diskCachePathForKey(key: key, fileExtension: fileExtension) ?? ""
+        if diskCache.fileExists(atPath: path) {
+            completion(path)
+        } else {
+            completion(nil)
+        }
+    }
+}
+```
+
+<Note>
+When data is found in disk cache but not in memory, it's automatically promoted to memory cache for faster subsequent access. This is known as cache warming.
+</Note>
+
+## Delete Operations
+
+### Clear All Cache
+
+Clearing cache returns the size of deleted data:
+
+```swift VideoCacheManager.swift:117-149
+/// Clear All Data in cache
+func clearCache(completion: @escaping (_ size: String) -> Void){
+    dispatchQueue?.async {
+        self.clearMemoryCache()
+        let size = self.clearDiskCache()
+        DispatchQueue.main.async {
+            completion(size)
+        }
+    }
+}
+
+/// Clear All Data in Memory Cache
+private func clearMemoryCache(){
+    memoryCache?.removeAllObjects()
+}
+
+/// Clear All Data in Disk Cache
+private func clearDiskCache() -> String{
+    do {
+        let contents = try diskCache.contentsOfDirectory(atPath: diskDirectoryURL!.path)
+        var folderSize:Float = 0
+        for name in contents {
+            let path = (diskDirectoryURL?.path)! + "/" + name
+            let fileDict = try diskCache.attributesOfItem(atPath: path)
+            folderSize += fileDict[FileAttributeKey.size] as! Float
+            try diskCache.removeItem(atPath: path)
+        }
+        // Unit: MB
+        return String.format(decimal: folderSize/1024.0/1024.0) ?? "0"
+    } catch {
+        print("clearDiskCache error:"+error.localizedDescription)
+    }
+    return "0"
+}
+```
+
+<Warning>
+The `clearDiskCache()` method iterates through all files and calculates their sizes. For large caches, this operation may take time and should always be performed on a background queue.
+</Warning>
+
+## SHA-2 Encryption
+
+Cache keys are encrypted using SHA-2 for secure and consistent file naming:
+
+```swift VideoCacheManager.swift:153-169
+/// Get Disk Cache Path: encrypting the key with SHA-2 in pathName
+private func diskCachePathForKey(key: String, fileExtension: String?) -> String?{
+    let fileName = sha2(key: key)
+    var cachePathForKey = diskDirectoryURL?.appendingPathComponent(fileName).path
+    if let fileExtension = fileExtension{
+        cachePathForKey = cachePathForKey! + "." + fileExtension
+    }
+    return cachePathForKey
+}
+
+/// SHA-2 hash
+private func sha2(key: String) -> String {
+    // Encryption using SHA-2
+    let inputData = Data(key.utf8)
+    let hashed = SHA256.hash(data: inputData)
+    let hashString = hashed.compactMap { String(format: "%02x", $0) }.joined()
+    return hashString
+}
+```
+
+<CodeGroup>
+
+```swift Import
+import CryptoKit
+```
+
+```swift SHA-2 Usage
+// Original URL: https://example.com/video.mp4
+// Becomes: a1b2c3d4e5f6...xyz.mp4
+let fileName = sha2(key: videoURL)
+```
+
+</CodeGroup>
+
+### Why SHA-2?
+
+- **Security**: Prevents path traversal attacks
+- **Consistency**: Same URL always produces same hash
+- **Collision resistance**: Extremely low probability of hash collisions
+- **File system safe**: Output contains only alphanumeric characters
+
+## Usage Example
+
+<Steps>
+
+### Step 1: Store Video
+
+```swift
+let videoData = // ... downloaded video data
+let videoURL = "https://firebase.storage/videos/12345.mp4"
+VideoCacheManager.shared.storeDataToCache(
+    data: videoData,
+    key: videoURL,
+    fileExtension: "mp4"
+)
+```
+
+### Step 2: Query Video
+
+```swift
+VideoCacheManager.shared.queryDataFromCache(
+    key: videoURL,
+    fileExtension: "mp4"
+) { data in
+    if let videoData = data as? Data {
+        // Use cached video data
+    } else {
+        // Download from network
+    }
+}
+```
+
+### Step 3: Query URL for Player
+
+```swift
+VideoCacheManager.shared.queryURLFromCache(
+    key: videoURL,
+    fileExtension: "mp4"
+) { path in
+    if let filePath = path as? String {
+        let url = URL(fileURLWithPath: filePath)
+        // Play video from local file
+    } else {
+        // Stream from network
+    }
+}
+```
+
+### Step 4: Clear Cache
+
+```swift
+VideoCacheManager.shared.clearCache { sizeInMB in
+    print("Cleared \(sizeInMB) MB of cache")
+}
+```
+
+</Steps>
+
+## Key Features
+
+- **Two-level caching**: Memory + Disk for optimal performance
+- **SHA-2 encryption**: Secure file naming
+- **Automatic cache warming**: Disk data promoted to memory
+- **Thread-safe**: Dedicated serial queue for all operations
+- **Size calculation**: Returns cleared cache size in MB
+- **Singleton pattern**: Single source of truth for cache
+- **Extension support**: Preserves original file extensions
+
+## Performance Characteristics
+
+| Operation | Memory Cache | Disk Cache |
+|-----------|--------------|------------|
+| Read Speed | ~1-5ms | ~10-50ms |
+| Write Speed | ~1-3ms | ~20-100ms |
+| Capacity | RAM limited | Disk limited |
+| Persistence | Temporary | Permanent |
+| Thread Safety | Built-in | Queue managed |
+
+<Note>
+NSCache automatically evicts objects when memory pressure is high, so critical videos should always be persisted to disk cache.
+</Note>

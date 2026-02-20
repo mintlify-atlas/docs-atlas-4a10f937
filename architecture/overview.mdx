@@ -1,0 +1,241 @@
+---
+title: "Architecture Overview"
+description: "High-level architecture and technology stack of the TikTok Clone iOS application"
+---
+
+## Introduction
+
+The TikTok Clone is a native iOS application built with Swift that replicates the core functionality of TikTok, including video feed scrolling, video recording, user profiles, and social interactions. The app follows modern iOS development practices with a focus on reactive programming and modular architecture.
+
+## Technology Stack
+
+The application leverages a robust set of technologies and frameworks:
+
+<Tabs>
+  <Tab title="Core Technologies">
+    - **Swift** - Primary programming language
+    - **UIKit** - UI framework for interface components
+    - **AVFoundation** - Video playback and recording
+    - **CryptoKit** - Secure hashing for cache management
+  </Tab>
+  <Tab title="Third-Party Libraries">
+    - **RxSwift 5** - Reactive programming for data binding and event handling
+    - **SnapKit** - Programmatic Auto Layout DSL
+    - **Firebase Analytics** - User analytics and tracking
+    - **Firebase Firestore** - NoSQL cloud database
+    - **Firebase Storage** - Cloud storage for videos
+    - **Lottie** - Animation rendering
+    - **MarqueeLabel** - Scrolling text labels
+  </Tab>
+</Tabs>
+
+### Key Dependencies (Podfile)
+
+```ruby
+pod 'SnapKit'
+pod 'RxSwift', '~> 5'
+pod 'MarqueeLabel'
+pod 'lottie-ios'
+
+# Database
+pod 'Firebase/Analytics'
+pod 'Firebase/Storage'
+pod 'Firebase/Firestore'
+```
+
+## Architectural Patterns
+
+### MVVM (Model-View-ViewModel)
+
+The application implements the MVVM architectural pattern enhanced with RxSwift for reactive data binding:
+
+```
+┌─────────────────────────────────────────┐
+│              View Layer                  │
+│  (ViewControllers, TableViewCells)       │
+└──────────────┬──────────────────────────┘
+               │ Binds to observables
+               ↓
+┌─────────────────────────────────────────┐
+│          ViewModel Layer                 │
+│  (Business Logic, RxSwift Subjects)      │
+└──────────────┬──────────────────────────┘
+               │ Manages models
+               ↓
+┌─────────────────────────────────────────┐
+│           Model Layer                    │
+│  (Entity Models, Network Layer)          │
+└─────────────────────────────────────────┘
+```
+
+<Note>
+  The MVVM pattern provides clear separation of concerns, making the codebase more testable and maintainable. RxSwift enables reactive data flow, automatically updating the UI when data changes.
+</Note>
+
+## Core Components
+
+### 1. Application Entry Points
+
+The app uses the standard iOS app lifecycle with scene-based architecture:
+
+- **AppDelegate.swift** (`~/MainApplication/AppDelegate.swift`) - Application lifecycle management
+- **SceneDelegate.swift** (`~/MainApplication/SceneDelegate.swift`) - Scene lifecycle and window management
+- **TabBarController.swift** (`~/MainApplication/TabBarController.swift:12-83`) - Main navigation controller with 5 tabs:
+  - Home (video feed)
+  - Discover (search)
+  - Media (camera/recording)
+  - Inbox (messages)
+  - Profile (user profile)
+
+### 2. Base Classes
+
+Foundation classes that provide common functionality:
+
+```swift
+// BaseViewController provides gesture recognizer setup
+class BaseViewController: UIViewController, 
+                         UINavigationControllerDelegate, 
+                         UIGestureRecognizerDelegate {
+    // Enables interactive pop gesture
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.navigationController?.interactivePopGestureRecognizer?.delegate = self
+        self.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    }
+}
+```
+
+Reference: `MainApplication/BaseViewController.swift:11-23`
+
+### 3. Network Layer
+
+The network layer provides a clean abstraction over Firebase operations:
+
+```swift
+class NetworkModel: NSObject {
+    typealias Success = (Any) -> Void
+    typealias Failure = (Error) -> Void
+}
+```
+
+Reference: `Network/NetworkModel.swift:11-17`
+
+All network request classes inherit from `NetworkModel` and implement specific Firebase operations:
+- **PostsRequest** - Fetch posts with pagination
+- **UserRequest** - User data operations
+- **VideoPostRequest** - Upload and publish videos
+
+### 4. Caching System
+
+The `VideoCacheManager` implements a two-tier caching strategy:
+
+<Accordion title="Caching Strategy">
+  1. **Memory Cache** - Fast access using `NSCache` for recently accessed videos
+  2. **Disk Cache** - Persistent storage in the documents directory
+  3. **SHA-256 Hashing** - Secure filename generation using CryptoKit
+  
+  ```swift
+  // Query order: Memory → Disk → Firebase
+  func queryDataFromCache(key: String, fileExtension: String?, 
+                         completion: @escaping (_ data: Any?) -> Void) {
+      if let data = dataFromMemoryCache(key: key) {
+          completion(data)
+      } else if let data = dataFromDiskCache(key: key, fileExtension: fileExtension) {
+          storeDataToMemoryCache(data: data, key: key)
+          completion(data)
+      } else {
+          completion(nil)
+      }
+  }
+  ```
+  
+  Reference: `Entity/VideoCache/VideoCacheManager.swift:76-85`
+</Accordion>
+
+## Data Flow
+
+The application follows a unidirectional data flow pattern:
+
+```
+User Action
+    ↓
+ViewController captures event
+    ↓
+ViewModel processes logic
+    ↓
+Network layer fetches/updates data
+    ↓
+ViewModel emits new state via RxSwift
+    ↓
+ViewController observes and updates UI
+```
+
+### Example: Loading Posts in Home Feed
+
+1. `HomeViewModel` initiates data fetch on initialization
+2. `PostsRequest.getPostsByPages()` queries Firebase Firestore
+3. Raw data is converted to `Post` entities
+4. ViewModel emits posts via `PublishSubject<[Post]>()`
+5. `HomeViewController` observes and reloads table view
+
+Reference: `Modules/Home/HomeViewModel.swift:48-70`
+
+## Module Organization
+
+The app is organized into feature-based modules:
+
+- **Home** - Video feed with infinite scroll and video playback
+- **Discover** - Search and explore functionality
+- **Media** - Camera, recording, and video posting
+- **Inbox** - Messaging and notifications
+- **Profile** - User profile with video grid
+
+Each module contains its own ViewControllers, ViewModels, Views, and Cells, promoting encapsulation and reusability.
+
+<Note>
+  This modular structure makes it easy to develop features independently and facilitates team collaboration on different parts of the app.
+</Note>
+
+## Key Design Decisions
+
+### Programmatic UI with SnapKit
+
+The app primarily uses programmatic UI construction with SnapKit for Auto Layout constraints, avoiding storyboards for most views. This approach:
+- Reduces merge conflicts in version control
+- Provides better code reusability
+- Enables easier unit testing
+
+### Singleton Pattern for Shared Resources
+
+Critical managers use the singleton pattern:
+- `VideoCacheManager.shared` - Video caching
+- `MediaViewModel.shared` - Media operations
+- `ProfileViewModel.shared` - Profile state management
+
+### Reactive Data Binding
+
+RxSwift subjects enable reactive updates:
+- `BehaviorSubject` - For state that needs initial value (loading states)
+- `PublishSubject` - For events and data streams (posts, errors)
+
+## Performance Considerations
+
+<Accordion title="Video Performance">
+  - **Prefetching** - `UITableViewDataSourcePrefetching` protocol for loading ahead
+  - **Paging** - Videos loaded in batches of 10 from Firebase
+  - **Cell Reuse** - Efficient table view cell recycling
+  - **Playback Management** - Automatic pause/play based on cell visibility
+</Accordion>
+
+<Accordion title="Memory Management">
+  - **Weak References** - Proper `[weak self]` usage in closures
+  - **DisposeBag** - Automatic RxSwift subscription cleanup
+  - **Cache Limits** - NSCache automatically evicts objects under memory pressure
+</Accordion>
+
+## Next Steps
+
+Explore the following sections for detailed information:
+
+- [Project Structure](/architecture/project-structure) - Detailed folder organization and file purposes
+- [MVVM Pattern](/architecture/mvvm-pattern) - In-depth look at MVVM implementation with RxSwift

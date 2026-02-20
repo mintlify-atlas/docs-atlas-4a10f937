@@ -1,0 +1,402 @@
+---
+title: NetworkModel
+description: Base network layer for Firebase Firestore and Storage operations with success and failure callbacks
+---
+
+## Overview
+
+`NetworkModel` is the base class for all network operations in the TikTok Clone app. It provides standardized type aliases for Firebase operation callbacks and serves as the foundation for specialized request classes that handle Firestore database queries and Firebase Storage operations.
+
+## Type Aliases
+
+### Success
+
+Callback for successful Firebase operations.
+
+```swift
+typealias Success = (Any) -> Void
+```
+
+<ResponseField name="data" type="Any">
+  The data returned from the Firebase operation. Type varies based on the specific request:
+  - `QuerySnapshot` for Firestore queries
+  - `URL` for Firebase Storage download URLs
+  - `String` for success messages
+</ResponseField>
+
+### Failure
+
+Callback for failed Firebase operations.
+
+```swift
+typealias Failure = (Error) -> Void
+```
+
+<ResponseField name="error" type="Error">
+  The error object describing why the operation failed.
+</ResponseField>
+
+## Subclasses
+
+`NetworkModel` is designed to be subclassed. The app includes three main network request classes:
+
+### PostsRequest
+
+Handles retrieving posts and video data from Firebase.
+
+```swift
+class PostsRequest: NetworkModel
+```
+
+### VideoPostRequest
+
+Handles publishing new video posts to Firebase.
+
+```swift
+class VideoPostRequest: NetworkModel
+```
+
+### UserRequest
+
+Handles user-related data operations.
+
+```swift
+class UserRequest: NetworkModel
+```
+
+## Usage Examples
+
+### Fetching Posts
+
+```swift
+import FirebaseFirestore
+
+PostsRequest.getPostsByPages(
+    pageNumber: 1,
+    size: 5,
+    success: { data in
+        guard let snapshot = data as? QuerySnapshot else { return }
+        
+        let posts = snapshot.documents.compactMap { document -> Post? in
+            try? document.data(as: Post.self)
+        }
+        
+        print("Loaded \(posts.count) posts")
+        // Update UI with posts
+    },
+    failure: { error in
+        print("Failed to fetch posts: \(error.localizedDescription)")
+        // Show error to user
+    }
+)
+```
+
+### Downloading Video URL
+
+```swift
+let videoName = "video_123.mp4"
+
+PostsRequest.getPostsVideoURL(
+    name: videoName,
+    success: { data in
+        guard let url = data as? URL else { return }
+        
+        print("Video URL: \(url)")
+        // Download or stream video from URL
+        self.playVideo(from: url)
+    },
+    failure: { error in
+        print("Failed to get video URL: \(error.localizedDescription)")
+    }
+)
+```
+
+### Publishing a Video Post
+
+```swift
+import FirebaseStorage
+
+let post = Post(
+    id: UUID().uuidString,
+    authorName: "John Doe",
+    video: "video_\(Date().timeIntervalSince1970).mp4",
+    description: "My awesome video!",
+    likes: 0,
+    comments: 0
+)
+
+let localVideoURL = URL(fileURLWithPath: "/path/to/video.mp4")
+
+VideoPostRequest.publishPost(
+    post: post,
+    videoURL: localVideoURL,
+    success: { data in
+        if let message = data as? String {
+            print(message)
+            // "Successfully published your video to database"
+        }
+        // Navigate back to feed
+        self.navigationController?.popViewController(animated: true)
+    },
+    failure: { error in
+        print("Failed to publish: \(error.localizedDescription)")
+        // Show retry option
+    }
+)
+```
+
+## PostsRequest Methods
+
+### getPostsByPages
+
+Retrieves posts within a specific page range from Firestore.
+
+```swift
+static func getPostsByPages(
+    pageNumber: Int,
+    size: Int = 5,
+    success: @escaping Success,
+    failure: @escaping Failure
+)
+```
+
+<ParamField path="pageNumber" type="Int">
+  Starting page number (1-indexed).
+</ParamField>
+
+<ParamField path="size" type="Int" default="5">
+  Number of posts to retrieve.
+</ParamField>
+
+<ParamField path="success" type="Success">
+  Callback with `QuerySnapshot` containing the posts.
+</ParamField>
+
+<ParamField path="failure" type="Failure">
+  Callback with error if the query fails.
+</ParamField>
+
+**Firestore Query:**
+
+```swift
+Firestore.firestore().collection("Post")
+    .whereField("pageNumber", isGreaterThanOrEqualTo: pageNumber)
+    .whereField("pageNumber", isLessThan: pageNumber + size)
+    .getDocuments()
+```
+
+### getPostsVideoURL
+
+Retrieves the download URL for a video from Firebase Storage.
+
+```swift
+static func getPostsVideoURL(
+    name: String,
+    success: @escaping Success,
+    failure: @escaping Failure
+)
+```
+
+<ParamField path="name" type="String">
+  Video filename in Firebase Storage (including file extension).
+</ParamField>
+
+<ParamField path="success" type="Success">
+  Callback with the download `URL` for the video.
+</ParamField>
+
+<ParamField path="failure" type="Failure">
+  Callback with error if the download URL cannot be retrieved.
+</ParamField>
+
+**Storage Path:**
+
+```swift
+Storage.storage().reference().child("Videos/\(name)")
+```
+
+## VideoPostRequest Methods
+
+### publishPost
+
+Uploads a video to Firebase Storage and saves post metadata to Firestore.
+
+```swift
+static func publishPost(
+    post: Post,
+    videoURL: URL,
+    success: @escaping Success,
+    failure: @escaping Failure
+)
+```
+
+<ParamField path="post" type="Post">
+  Post object containing metadata (author, description, etc.).
+</ParamField>
+
+<ParamField path="videoURL" type="URL">
+  Local file URL of the video to upload.
+</ParamField>
+
+<ParamField path="success" type="Success">
+  Callback with success message string.
+</ParamField>
+
+<ParamField path="failure" type="Failure">
+  Callback with error if upload or database save fails.
+</ParamField>
+
+**Process:**
+
+1. Upload video file to Firebase Storage at `Videos/{filename}`
+2. Retrieve the download URL from Storage
+3. Update post object with download URL
+4. Save post metadata to Firestore `Post` collection
+
+**Example with Error Handling:**
+
+```swift
+VideoPostRequest.publishPost(
+    post: newPost,
+    videoURL: recordedVideoURL,
+    success: { data in
+        DispatchQueue.main.async {
+            self.hideLoadingIndicator()
+            self.showSuccessAlert(message: "Video published successfully!")
+        }
+    },
+    failure: { error in
+        DispatchQueue.main.async {
+            self.hideLoadingIndicator()
+            
+            let errorMessage: String
+            if (error as NSError).domain == NSURLErrorDomain {
+                errorMessage = "Network error. Please check your connection."
+            } else {
+                errorMessage = "Failed to publish video: \(error.localizedDescription)"
+            }
+            
+            self.showErrorAlert(message: errorMessage)
+        }
+    }
+)
+```
+
+## Integration with VideoCacheManager
+
+The network layer integrates seamlessly with `VideoCacheManager` for efficient video loading:
+
+```swift
+func loadVideo(for post: Post) {
+    // 1. Check cache first
+    VideoCacheManager.shared.queryURLFromCache(
+        key: post.videoURL?.absoluteString ?? "",
+        fileExtension: "mp4"
+    ) { cachedPath in
+        if let path = cachedPath as? String {
+            // Play from cache
+            self.playVideo(from: URL(fileURLWithPath: path))
+        } else {
+            // 2. Download from Firebase if not cached
+            self.downloadAndCacheVideo(for: post)
+        }
+    }
+}
+
+func downloadAndCacheVideo(for post: Post) {
+    PostsRequest.getPostsVideoURL(
+        name: post.video,
+        success: { data in
+            guard let url = data as? URL else { return }
+            
+            // Download video data
+            URLSession.shared.dataTask(with: url) { data, response, error in
+                guard let videoData = data, error == nil else { return }
+                
+                // 3. Store in cache for future use
+                VideoCacheManager.shared.storeDataToCache(
+                    data: videoData,
+                    key: url.absoluteString,
+                    fileExtension: "mp4"
+                )
+                
+                // 4. Play video
+                DispatchQueue.main.async {
+                    self.playVideo(from: url)
+                }
+            }.resume()
+        },
+        failure: { error in
+            print("Failed to load video: \(error.localizedDescription)")
+        }
+    )
+}
+```
+
+## Firebase Configuration
+
+The network layer requires Firebase to be configured in your app:
+
+```swift
+import Firebase
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, 
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        FirebaseApp.configure()
+        return true
+    }
+}
+```
+
+## Error Handling Best Practices
+
+```swift
+func handleNetworkError(_ error: Error) {
+    let nsError = error as NSError
+    
+    switch nsError.domain {
+    case NSURLErrorDomain:
+        // Network connectivity issues
+        showAlert("Network Error", "Please check your internet connection.")
+        
+    case "FIRStorageErrorDomain":
+        // Firebase Storage errors
+        if nsError.code == 404 {
+            showAlert("Not Found", "The video could not be found.")
+        } else {
+            showAlert("Storage Error", error.localizedDescription)
+        }
+        
+    case "FIRFirestoreErrorDomain":
+        // Firestore database errors
+        showAlert("Database Error", error.localizedDescription)
+        
+    default:
+        showAlert("Error", error.localizedDescription)
+    }
+}
+```
+
+## Thread Safety
+
+All Firebase operations are asynchronous and callback on background threads. Always dispatch UI updates to the main thread:
+
+```swift
+PostsRequest.getPostsByPages(pageNumber: 1, size: 10,
+    success: { data in
+        let posts = self.parsePosts(from: data)
+        
+        DispatchQueue.main.async {
+            self.posts = posts
+            self.tableView.reloadData()
+        }
+    },
+    failure: { error in
+        DispatchQueue.main.async {
+            self.showError(error)
+        }
+    }
+)
+```

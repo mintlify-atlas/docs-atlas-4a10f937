@@ -1,0 +1,228 @@
+---
+title: Home Feed
+description: Video feed implementation with TableView, streaming, and interactive gestures for the TikTok-like experience
+---
+
+The home feed is the core feature of the app, displaying a vertical scrolling feed of short-form videos with TikTok-style interactions.
+
+## Architecture
+
+The home feed is built using a `UITableView` with paging enabled, where each cell contains a full-screen video player. The implementation is split between:
+
+- **HomeViewController**: Manages the table view and coordinates video playback
+- **HomeTableViewCell**: Individual video cell with player and interaction UI
+- **VideoPlayerView**: Custom video player with caching support
+
+## Table View Setup
+
+The table view is configured for a full-screen, paginated video experience:
+
+```swift HomeViewController.swift:67-85
+func setupView(){
+    // Table View
+    mainTableView = UITableView()
+    mainTableView.backgroundColor = .black
+    mainTableView.translatesAutoresizingMaskIntoConstraints = false
+    mainTableView.tableFooterView = UIView()
+    mainTableView.isPagingEnabled = true
+    mainTableView.contentInsetAdjustmentBehavior = .never
+    mainTableView.showsVerticalScrollIndicator = false
+    mainTableView.separatorStyle = .none
+    view.addSubview(mainTableView)
+    mainTableView.snp.makeConstraints({ make in
+        make.edges.equalToSuperview()
+    })
+    mainTableView.register(UINib(nibName: "HomeTableViewCell", bundle: nil), forCellReuseIdentifier: cellId)
+    mainTableView.delegate = self
+    mainTableView.dataSource = self
+    mainTableView.prefetchDataSource = self
+}
+```
+
+<Note>
+The `isPagingEnabled` property ensures each video takes up the full screen, creating a swipe-to-next-video experience similar to TikTok.
+</Note>
+
+## Video Playback Management
+
+<Steps>
+
+### Step 1: Cell Display
+
+When a cell is about to be displayed, playback is paused until scrolling ends:
+
+```swift HomeViewController.swift:153-161
+func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+    // If the cell will be displayed, pause the video until drag ends
+    if let cell = cell as? HomeTableViewCell{
+        oldAndNewIndices.1 = indexPath.row
+        currentIndex = indexPath.row
+        cell.pause()
+    }
+}
+```
+
+### Step 2: Scroll End
+
+After scrolling ends, the current video automatically replays:
+
+```swift HomeViewController.swift:181-184
+func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+    let cell = self.mainTableView.cellForRow(at: IndexPath(row: self.currentIndex, section: 0)) as? HomeTableViewCell
+    cell?.replay()
+}
+```
+
+### Step 3: Cleanup
+
+When cells are no longer visible, videos are paused to save resources:
+
+```swift HomeViewController.swift:163-168
+func tableView(_ tableView: UITableView, didEndDisplaying cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+    // Pause the video if the cell is ended displaying
+    if let cell = cell as? HomeTableViewCell {
+        cell.pause()
+    }
+}
+```
+
+</Steps>
+
+## Interactive Gestures
+
+The home feed supports multiple gesture interactions:
+
+### Tap to Pause/Play
+
+A single tap toggles video playback with a smooth pause indicator animation:
+
+```swift HomeTableViewCell.swift:125-145
+@objc func handlePause(){
+    if isPlaying {
+        // Pause video and show pause sign
+        UIView.animate(withDuration: 0.075, delay: 0, options: .curveEaseIn, animations: { [weak self] in
+            guard let self = self else { return }
+            self.pauseImgView.alpha = 0.35
+            self.pauseImgView.transform = CGAffineTransform.init(scaleX: 0.45, y: 0.45)
+        }, completion: { [weak self] _ in
+            self?.pause()
+        })
+    } else {
+        // Start video and remove pause sign
+        UIView.animate(withDuration: 0.075, delay: 0, options: .curveEaseInOut, animations: { [weak self] in
+            guard let self = self else { return }
+            self.pauseImgView.alpha = 0
+        }, completion: { [weak self] _ in
+            self?.play()
+            self?.pauseImgView.transform = .identity
+        })
+    }
+}
+```
+
+### Double Tap to Like
+
+Double-tapping creates an animated heart effect with random rotation:
+
+```swift HomeTableViewCell.swift:173-193
+@objc func handleLikeGesture(sender: UITapGestureRecognizer){
+    let location = sender.location(in: self)
+    let heartView = UIImageView(image: UIImage(systemName: "heart.fill"))
+    heartView.tintColor = .red
+    let width : CGFloat = 110
+    heartView.contentMode = .scaleAspectFit
+    heartView.frame = CGRect(x: location.x - width / 2, y: location.y - width / 2, width: width, height: width)
+    heartView.transform = CGAffineTransform(rotationAngle: CGFloat.random(in: -CGFloat.pi * 0.2...CGFloat.pi * 0.2))
+    self.contentView.addSubview(heartView)
+    UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 3, options: [.curveEaseInOut], animations: {
+        heartView.transform = heartView.transform.scaledBy(x: 0.85, y: 0.85)
+    }, completion: { _ in
+        UIView.animate(withDuration: 0.4, delay: 0.1, usingSpringWithDamping: 0.8, initialSpringVelocity: 3, options: [.curveEaseInOut], animations: {
+            heartView.transform = heartView.transform.scaledBy(x: 2.3, y: 2.3)
+            heartView.alpha = 0
+        }, completion: { _ in
+            heartView.removeFromSuperview()
+        })
+    })
+    likeVideo()
+}
+```
+
+<Note>
+The gesture recognizers are configured so that the single tap requires the double tap to fail first, preventing accidental pauses when liking:
+
+```swift
+pauseGesture.require(toFail: likeDoubleTapGesture)
+```
+</Note>
+
+## Comments Popup
+
+Tapping the comment button shows a popup view:
+
+```swift HomeTableViewCell.swift:195-197
+@IBAction func comment(_ sender: Any) {
+    CommentPopUpView.init().show()
+}
+```
+
+## Data Binding with RxSwift
+
+The view controller uses RxSwift for reactive data binding:
+
+```swift HomeViewController.swift:88-116
+func setupBinding(){
+    // Posts
+    viewModel.posts
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { posts in
+            self.data = posts
+            self.mainTableView.reloadData()
+        }).disposed(by: disposeBag)
+    
+    viewModel.isLoading
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { isLoading in
+            if isLoading {
+                self.loadingAnimation.alpha = 1
+                self.loadingAnimation.play()
+            } else {
+                self.loadingAnimation.alpha = 0
+                self.loadingAnimation.stop()
+            }
+        }).disposed(by: disposeBag)
+    
+    viewModel.error
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { err in
+            self.showAlert(err.localizedDescription)
+        }).disposed(by: disposeBag)
+}
+```
+
+## Key Features
+
+- **Full-screen paging**: Each video occupies the entire screen
+- **Auto-play on scroll**: Videos automatically start when scrolled into view
+- **Tap to pause**: Single tap pauses/resumes playback
+- **Double tap to like**: Animated heart appears at tap location
+- **Comments**: Popup view for viewing and adding comments
+- **Marquee text**: Song/music labels scroll horizontally
+- **Prefetching**: TableView prefetch data source for smooth scrolling
+- **Memory management**: Videos pause when off-screen
+
+<Warning>
+Always pause videos in `viewWillDisappear` to prevent background playback:
+
+```swift
+override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+        cell.pause()
+    }
+}
+```
+</Warning>

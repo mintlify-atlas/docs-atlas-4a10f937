@@ -1,0 +1,507 @@
+---
+title: "View Controllers"
+description: "Core view controllers managing the app's main screens and navigation flow"
+---
+
+The TikTok Clone app uses a collection of specialized view controllers to manage different sections of the application. Each controller handles specific functionality and user interactions.
+
+## TabBarController
+
+The main navigation controller that manages all primary app sections.
+
+**Location:** `MainApplication/TabBarController.swift:12`
+
+### Properties
+
+<ParamField path="homeNavigationController" type="BaseNavigationController">
+  Navigation controller wrapping the home feed
+</ParamField>
+
+<ParamField path="homeViewController" type="HomeViewController">
+  Displays the main video feed
+</ParamField>
+
+<ParamField path="discoverViewController" type="DiscoverViewController">
+  Search and discovery interface
+</ParamField>
+
+<ParamField path="mediaViewController" type="MediaViewController">
+  Video recording and creation
+</ParamField>
+
+<ParamField path="inboxViewController" type="InboxViewController">
+  Messages and notifications
+</ParamField>
+
+<ParamField path="profileViewController" type="ProfileViewController">
+  User profile display
+</ParamField>
+
+### Implementation
+
+```swift
+class TabBarController: UITabBarController, UITabBarControllerDelegate {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.delegate = self
+        
+        tabBar.barTintColor = .black
+        tabBar.isTranslucent = false
+        tabBar.unselectedItemTintColor = .gray
+        tabBar.tintColor = .white
+        
+        // Initialize view controllers
+        homeViewController = HomeViewController()
+        homeNavigationController = BaseNavigationController(rootViewController: homeViewController)
+        discoverViewController = DiscoverViewController()
+        mediaViewController = MediaViewController()
+        inboxViewController = InboxViewController()
+        profileViewController = ProfileViewController()
+        
+        // Set tab bar icons
+        homeViewController.tabBarItem.image = UIImage(systemName: "house")
+        homeViewController.tabBarItem.selectedImage = UIImage(systemName: "house.fill")
+        
+        discoverViewController.tabBarItem.image = UIImage(systemName: "magnifyingglass")
+        mediaViewController.tabBarItem.image = UIImage(named: "addMedia")
+        inboxViewController.tabBarItem.image = UIImage(systemName: "text.bubble")
+        profileViewController.tabBarItem.image = UIImage(systemName: "person.crop.circle")
+        
+        viewControllers = [homeNavigationController, discoverViewController, 
+                          mediaViewController, inboxViewController, profileViewController]
+    }
+}
+```
+
+### Tab Bar Delegation
+
+The media tab presents modally instead of pushing:
+
+```swift
+func tabBarController(_ tabBarController: UITabBarController, 
+                     shouldSelect viewController: UIViewController) -> Bool {
+    if viewController.isKind(of: MediaViewController.self) {
+        let vc = UIStoryboard(name: "MediaViews", bundle: nil)
+            .instantiateViewController(identifier: "MediaVC") as! MediaViewController
+        let navigationController = BaseNavigationController(rootViewController: vc)
+        navigationController.modalPresentationStyle = .overFullScreen
+        self.present(navigationController, animated: true, completion: nil)
+        return false
+    }
+    return true
+}
+```
+
+---
+
+## HomeViewController
+
+Displays the main vertical scrolling video feed with full-screen videos.
+
+**Location:** `Modules/Home/HomeViewController.swift:15`
+
+### Key Features
+
+- Paging-enabled table view for vertical scrolling
+- Video player management per cell
+- Loading animations with Lottie
+- RxSwift reactive bindings
+- Data prefetching for smooth scrolling
+
+### Properties
+
+<ParamField path="mainTableView" type="UITableView">
+  Full-screen table view with paging enabled for vertical video scrolling
+</ParamField>
+
+<ParamField path="loadingAnimation" type="AnimationView">
+  Lottie animation view showing loading state
+</ParamField>
+
+<ParamField path="viewModel" type="HomeViewModel">
+  View model managing posts data and business logic
+</ParamField>
+
+<ParamField path="currentIndex" type="Int">
+  Currently visible video index (marked as @objc dynamic for KVO)
+</ParamField>
+
+<ParamField path="data" type="[Post]">
+  Array of post objects displayed in the feed
+</ParamField>
+
+### Setup
+
+<Tabs>
+  <Tab title="View Setup">
+    ```swift
+    func setupView() {
+        mainTableView = UITableView()
+        mainTableView.backgroundColor = .black
+        mainTableView.translatesAutoresizingMaskIntoConstraints = false
+        mainTableView.tableFooterView = UIView()
+        mainTableView.isPagingEnabled = true
+        mainTableView.contentInsetAdjustmentBehavior = .never
+        mainTableView.showsVerticalScrollIndicator = false
+        mainTableView.separatorStyle = .none
+        view.addSubview(mainTableView)
+        
+        mainTableView.snp.makeConstraints({ make in
+            make.edges.equalToSuperview()
+        })
+        
+        mainTableView.register(UINib(nibName: "HomeTableViewCell", bundle: nil), 
+                              forCellReuseIdentifier: cellId)
+        mainTableView.delegate = self
+        mainTableView.dataSource = self
+        mainTableView.prefetchDataSource = self
+    }
+    ```
+  </Tab>
+  <Tab title="Bindings">
+    ```swift
+    func setupBinding() {
+        viewModel.posts
+            .asObserver()
+            .observeOn(MainScheduler.instance)
+            .subscribe(onNext: { posts in
+                self.data = posts
+                self.mainTableView.reloadData()
+            }).disposed(by: disposeBag)
+        
+        viewModel.isLoading
+            .asObserver()
+            .observeOn(MainScheduler.instance)
+            .subscribe(onNext: { isLoading in
+                if isLoading {
+                    self.loadingAnimation.alpha = 1
+                    self.loadingAnimation.play()
+                } else {
+                    self.loadingAnimation.alpha = 0
+                    self.loadingAnimation.stop()
+                }
+            }).disposed(by: disposeBag)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Video Playback Control
+
+```swift
+override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+    if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+        cell.play()
+    }
+}
+
+override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+        cell.pause()
+    }
+}
+
+func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+    let cell = self.mainTableView.cellForRow(at: IndexPath(row: self.currentIndex, section: 0)) 
+        as? HomeTableViewCell
+    cell?.replay()
+}
+```
+
+---
+
+## MediaViewController
+
+Handles video recording with camera controls and post-recording editing options.
+
+**Location:** `Modules/Media/MediaViewController.swift:11`
+
+### Key Features
+
+- Camera session management
+- Long-press recording gesture
+- Permission handling for camera and microphone
+- Video preview and playback
+- Post-recording editing options
+
+### Properties
+
+<ParamField path="cameraManager" type="CameraManager">
+  Manages AVFoundation camera session and recording
+</ParamField>
+
+<ParamField path="permissionView" type="AccessPermissionView">
+  UI for requesting camera and microphone permissions
+</ParamField>
+
+<ParamField path="recordView" type="RecordButton">
+  Custom record button with animations
+</ParamField>
+
+<ParamField path="playerView" type="MediaPlayerView">
+  Plays back recorded video for preview
+</ParamField>
+
+<ParamField path="videoURL" type="URL?">
+  URL of the recorded video file
+</ParamField>
+
+### Recording Flow
+
+<Tabs>
+  <Tab title="Setup">
+    ```swift
+    func setupView() {
+        if cameraManager.cameraAndAudioAccessPermitted {
+            setUpSession()
+        } else {
+            self.view.addSubview(permissionView)
+            permissionView.cameraAccessBtn.addTarget(self, 
+                action: #selector(askForCameraAccess), for: .touchUpInside)
+            permissionView.microphoneAccessBtn.addTarget(self, 
+                action: #selector(askForMicrophoneAccess), for: .touchUpInside)
+        }
+    }
+    
+    func setUpSession() {
+        setupRecognizers()
+        permissionView.removeFromSuperview()
+        cameraManager.delegate = self
+        previewView.layer.cornerRadius = cornerRadius
+        cameraManager.addPreviewLayerToView(view: previewView)
+        view.sendSubviewToBack(previewView)
+    }
+    ```
+  </Tab>
+  <Tab title="Recording">
+    ```swift
+    func startRecording() {
+        hideLabelsAndImages(isHidden: true)
+        recordView.startRecordingAnimation()
+        cameraManager.startRecording()
+    }
+    
+    func stopRecording() {
+        cameraManager.stopRecording()
+        recordView.stopRecodingAnimation()
+    }
+    
+    func finishRecording(_ videoURL: URL?, _ err: Error?) {
+        recordView.isHidden = true
+        exitBtn.isHidden = false
+        nextBtn.alpha = 1
+        
+        if let error = err {
+            self.showAlert(error.localizedDescription)
+        } else {
+            self.videoURL = videoURL
+        }
+        
+        presentPlayerView()
+    }
+    ```
+  </Tab>
+  <Tab title="Gesture Handling">
+    ```swift
+    func setupRecognizers() {
+        let recordLongPressGesture = UILongPressGestureRecognizer(
+            target: self, action: #selector(recordBtnPressed(sender:)))
+        recordLongPressGesture.minimumPressDuration = 0
+        recordView.addGestureRecognizer(recordLongPressGesture)
+    }
+    
+    @objc func recordBtnPressed(sender: UILongPressGestureRecognizer) {
+        let location = sender.location(in: self.view)
+        switch sender.state {
+        case .began:
+            startRecording()
+        case .changed:
+            recordView.locationChanged(location: location)
+        case .cancelled, .ended:
+            stopRecording()
+        default:
+            break
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Permission Management
+
+```swift
+@objc func askForCameraAccess() {
+    cameraManager.askForCameraAccess({ [weak self] access in
+        guard let self = self else { return }
+        if access {
+            self.permissionView.cameraAccessPermitted()
+            if (self.cameraManager.cameraAndAudioAccessPermitted) { 
+                self.setUpSession() 
+            }
+        } else {
+            self.alertCameraAccessNeeded()
+        }
+    })
+}
+
+func alertCameraAccessNeeded() {
+    let settingsAppURL = URL(string: UIApplication.openSettingsURLString)!
+    let alert = UIAlertController(
+        title: "Need Camera Access",
+        message: "Camera access is required to make full use of this function.",
+        preferredStyle: .alert
+    )
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+    alert.addAction(UIAlertAction(title: "Settings", style: .default, handler: { _ in
+        UIApplication.shared.open(settingsAppURL, options: [:], completionHandler: nil)
+    }))
+    present(alert, animated: true, completion: nil)
+}
+```
+
+---
+
+## ProfileViewController
+
+Displays user profile with collection view layout for posts grid.
+
+**Location:** `Modules/Profile/ProfileViewController.swift:12`
+
+### Key Features
+
+- Custom collection view flow layout
+- Profile header with user information
+- Slide bar for content filtering
+- Parallax background image effect
+- Video posts grid
+
+### Properties
+
+<ParamField path="collectionView" type="UICollectionView">
+  Grid display of user's video posts
+</ParamField>
+
+<ParamField path="profileHeader" type="ProfileHeaderView">
+  Reusable header view with profile information
+</ParamField>
+
+<ParamField path="profileBackgroundImgView" type="UIImageView">
+  Background image with parallax scroll effect
+</ParamField>
+
+### Layout Configuration
+
+<Tabs>
+  <Tab title="Collection View">
+    ```swift
+    func setupView() {
+        self.view.backgroundColor = .Background
+        
+        let collectionViewLayout = ProfileCollectionViewFlowLayout(
+            navBarHeight: getStatusBarHeight())
+        collectionViewLayout.minimumLineSpacing = 1
+        collectionViewLayout.minimumInteritemSpacing = 0
+        
+        collectionView = UICollectionView(frame: .zero, 
+                                         collectionViewLayout: collectionViewLayout)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.backgroundColor = .clear
+        collectionView.contentInsetAdjustmentBehavior = .never
+        collectionView.alwaysBounceVertical = true
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.delegate = self
+        collectionView.dataSource = self
+        
+        view.addSubview(collectionView)
+        collectionView.snp.makeConstraints({ make in
+            make.edges.equalToSuperview()
+        })
+        
+        collectionView.register(UINib(nibName: "ProfileHeaderView", bundle: nil), 
+            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, 
+            withReuseIdentifier: PROFILE_HEADER_ID)
+    }
+    ```
+  </Tab>
+  <Tab title="Item Sizing">
+    ```swift
+    func collectionView(_ collectionView: UICollectionView, 
+                       layout collectionViewLayout: UICollectionViewLayout, 
+                       sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let itemWidth = (ScreenSize.Width - CGFloat(Int(ScreenSize.Width) % 3)) / 3.0 - 1.0
+        let itemHeight = itemWidth * 1.3
+        return CGSize(width: itemWidth, height: itemHeight)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, 
+                       layout collectionViewLayout: UICollectionViewLayout, 
+                       referenceSizeForHeaderInSection section: Int) -> CGSize {
+        switch section {
+        case 0:
+            return CGSize(width: ScreenSize.Width, height: 420)
+        case 1:
+            return CGSize(width: ScreenSize.Width, height: 42)
+        default:
+            return .zero
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Scroll Effects
+
+```swift
+func scrollViewDidScroll(_ scrollView: UIScrollView) {
+    let offsetY = scrollView.contentOffset.y
+    if offsetY < 0 {
+        stretchProfileBackgroundWhenScroll(offsetY: offsetY)
+    } else {
+        profileBackgroundImgView.transform = CGAffineTransform(translationX: 0, y: -offsetY)
+    }
+}
+
+func stretchProfileBackgroundWhenScroll(offsetY: CGFloat) {
+    let scaleRatio: CGFloat = abs(offsetY) / 500.0
+    let scaledHeight: CGFloat = scaleRatio * profileBackgroundImgView.frame.height
+    profileBackgroundImgView.transform = CGAffineTransform(scaleX: scaleRatio + 1.0, 
+                                                          y: scaleRatio + 1.0)
+        .concatenating(CGAffineTransform(translationX: 0, y: scaledHeight))
+}
+```
+
+---
+
+## DiscoverViewController
+
+Search and discovery interface for exploring content.
+
+**Location:** `Modules/Discover/DiscoverViewController.swift:11`
+
+```swift
+class DiscoverViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Implementation pending
+    }
+}
+```
+
+---
+
+## InboxViewController
+
+Messages and notifications center.
+
+**Location:** `Modules/Inbox/InboxViewController.swift:11`
+
+```swift
+class InboxViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Implementation pending
+    }
+}
+```

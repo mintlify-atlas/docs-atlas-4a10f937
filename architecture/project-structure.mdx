@@ -1,0 +1,480 @@
+---
+title: "Project Structure"
+description: "Comprehensive guide to the folder structure and organization of the TikTok Clone iOS project"
+---
+
+## Overview
+
+The TikTok Clone project follows a feature-based modular structure that promotes separation of concerns and scalability. Each major component has its dedicated directory with clear responsibilities.
+
+```
+KD Tiktok-Clone/
+├── MainApplication/       # App lifecycle and core setup
+├── Modules/              # Feature modules (Home, Profile, etc.)
+├── Entity/               # Data models and cache managers
+├── Network/              # API and Firebase integration
+├── Extensions/           # Swift extensions
+├── Utils/                # Utility classes and constants
+├── Resources/            # Assets, animations, and media
+└── Base.lproj/          # Localization files
+```
+
+## Directory Structure
+
+### MainApplication/
+
+Core application setup and base classes for the entire app.
+
+<Accordion title="Files in MainApplication/">
+  <Tabs>
+    <Tab title="AppDelegate.swift">
+      Entry point for the application lifecycle.
+      
+      **Location**: `MainApplication/AppDelegate.swift`
+      
+      **Responsibilities**:
+      - Application launch configuration
+      - Firebase initialization
+      - App lifecycle events (background, foreground)
+    </Tab>
+    
+    <Tab title="SceneDelegate.swift">
+      Manages scene lifecycle for iOS 13+ multi-window support.
+      
+      **Location**: `MainApplication/SceneDelegate.swift`
+      
+      **Responsibilities**:
+      - Window and scene management
+      - Initial view controller setup
+      - Scene state transitions
+    </Tab>
+    
+    <Tab title="TabBarController.swift">
+      Main navigation controller coordinating the 5 primary app sections.
+      
+      **Location**: `MainApplication/TabBarController.swift:12-83`
+      
+      ```swift
+      class TabBarController: UITabBarController, UITabBarControllerDelegate {
+          var homeNavigationController: BaseNavigationController!
+          var homeViewController: HomeViewController!
+          var discoverViewController: DiscoverViewController!
+          var mediaViewController: MediaViewController!
+          var inboxViewController: InboxViewController!
+          var profileViewController: ProfileViewController!
+      }
+      ```
+      
+      **Tab Configuration**:
+      - **Tab 0**: Home - Video feed with navigation controller
+      - **Tab 1**: Discover - Search and explore
+      - **Tab 2**: Media - Camera/recording (modal presentation)
+      - **Tab 3**: Inbox - Messages and notifications
+      - **Tab 4**: Profile - User profile page
+    </Tab>
+    
+    <Tab title="BaseViewController.swift">
+      Foundation view controller providing common functionality.
+      
+      **Location**: `MainApplication/BaseViewController.swift:11-23`
+      
+      ```swift
+      class BaseViewController: UIViewController, 
+                               UINavigationControllerDelegate, 
+                               UIGestureRecognizerDelegate {
+          override func viewDidLoad() {
+              super.viewDidLoad()
+              // Enable interactive pop gesture for navigation
+              self.navigationController?.interactivePopGestureRecognizer?.delegate = self
+              self.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+          }
+      }
+      ```
+      
+      **Purpose**: Enables swipe-to-go-back gesture across all view controllers
+    </Tab>
+    
+    <Tab title="BaseNavigationController.swift">
+      Custom navigation controller for app-wide navigation styling.
+      
+      **Location**: `MainApplication/BaseNavigationController.swift`
+      
+      **Responsibilities**:
+      - Navigation bar appearance
+      - Transition customization
+      - Status bar configuration
+    </Tab>
+  </Tabs>
+</Accordion>
+
+### Modules/
+
+Feature-based modules implementing specific app functionality. Each module is self-contained with its own views, view models, and supporting files.
+
+<Accordion title="Home Module">
+  The video feed feature displaying scrollable short-form videos.
+  
+  **Location**: `Modules/Home/`
+  
+  **Files**:
+  - `HomeViewController.swift` - Main feed controller with table view
+  - `HomeViewModel.swift` - Business logic and data management
+  - `HomeTableViewCell.swift` - Individual video cell
+  - `VideoPlayerView.swift` - Custom video player UI
+  - `VideoPlayerManager.swift` - Video playback coordination
+  - `CommentPopUpView.swift` - Comment section overlay
+  - `CommentTableViewCell.swift` - Individual comment cell
+  
+  **Key Features**:
+  - Paginated video loading (10 per page)
+  - Automatic video playback on scroll
+  - Prefetching for smooth scrolling
+  - Audio session management
+  
+  Reference: `Modules/Home/HomeViewModel.swift:14-75`
+</Accordion>
+
+<Accordion title="Media Module">
+  Video recording, editing, and posting functionality.
+  
+  **Location**: `Modules/Media/`
+  
+  **Files**:
+  - `MediaViewController.swift` - Camera interface
+  - `MediaViewModel.swift` - Recording and upload logic
+  - `MediaPostingViewController.swift` - Post creation screen
+  - `CameraManager.swift` - Camera and recording management
+  - `Views/`
+    - `MediaPlayerView.swift` - Preview player
+    - `RecordButton.swift` - Custom recording button
+    - `AccessPermissionView.swift` - Permission request UI
+  
+  **Key Features**:
+  - Camera capture with AVFoundation
+  - Video recording with timer
+  - Post metadata (caption, music, author info)
+  - Firebase Storage upload
+  
+  ```swift
+  func postVideo(videoURL: URL, caption: String, 
+                 success: @escaping (String) -> Void, 
+                 failure: @escaping (Error) -> Void) {
+      let videoName = randomString(length: 10) + ".\(VIDEO_FILE_EXTENSION)"
+      let post = Post(id: "REMOVE", video: videoName, videoURL: videoURL, 
+                     videoFileExtension: VIDEO_FILE_EXTENSION, ...)
+      VideoPostRequest.publishPost(post: post, videoURL: videoURL, 
+                                  success: success, failure: failure)
+  }
+  ```
+  
+  Reference: `Modules/Media/MediaViewModel.swift:23-34`
+</Accordion>
+
+<Accordion title="Profile Module">
+  User profile display with video grid.
+  
+  **Location**: `Modules/Profile/`
+  
+  **Files**:
+  - `ProfileViewController.swift` - Profile page with collection view
+  - `ProfileViewModel.swift` - Profile state and cache management
+  - `ProfileCollectionViewCell.swift` - Video thumbnail cells
+  - `ProfileCollectionViewFlowLayout.swift` - Custom grid layout
+  - `ProfileHeaderView.swift` - User info header
+  - `ProfileSlideBarView.swift` - Tab selector (Posts/Liked)
+  
+  **Layout**:
+  - Custom collection view with stretching header
+  - 3-column video grid
+  - Parallax effect on background image
+  
+  Reference: `Modules/Profile/ProfileViewController.swift:12-166`
+</Accordion>
+
+<Accordion title="Discover & Inbox Modules">
+  **Discover Module** (`Modules/Discover/`)
+  - Search and explore functionality
+  - `DiscoverViewController.swift` - Search interface
+  
+  **Inbox Module** (`Modules/Inbox/`)
+  - Messaging and notifications
+  - `InboxViewController.swift` - Messages list
+</Accordion>
+
+### Entity/
+
+Data models, cache managers, and domain entities.
+
+<Tabs>
+  <Tab title="Models/">
+    Core data structures representing app entities.
+    
+    **Location**: `Entity/Models/`
+    
+    **Post.swift** (`Entity/Models/Post.swift:13-85`)
+    ```swift
+    struct Post: Codable {
+        var id: String
+        var video: String
+        var videoURL: URL?
+        var videoFileExtension: String?
+        var videoHeight: Int
+        var videoWidth: Int
+        var autherID: String
+        var autherName: String
+        var caption: String
+        var music: String
+        var likeCount: Int
+        var shareCount: Int
+        var commentID: String
+        
+        init(dictionary: [String: Any]) {
+            // Parse Firebase document data
+        }
+    }
+    ```
+    
+    **User.swift** (`Entity/Models/User.swift:12-26`)
+    ```swift
+    struct User {
+        var uid: String
+        var name: String
+        var description: String
+        var douyinID: Int
+        var tags: [String]
+        var profilePic: String
+        var posts: [String]
+        var likedPosts: [String]
+        var followerCount: Int
+        var followCount: Int
+        var likeCount: Int
+        var friendsCount: Int
+    }
+    ```
+    
+    **Comment.swift**
+    - Comment text and metadata
+    - User information
+    - Timestamp and likes
+  </Tab>
+  
+  <Tab title="VideoCache/">
+    Video caching system for performance optimization.
+    
+    **Location**: `Entity/VideoCache/`
+    
+    **VideoCacheManager.swift** (`Entity/VideoCache/VideoCacheManager.swift:13-173`)
+    
+    A sophisticated two-tier caching system:
+    
+    ```swift
+    class VideoCacheManager: NSObject {
+        static let shared: VideoCacheManager = VideoCacheManager.init()
+        
+        var memoryCache: NSCache<NSString, AnyObject>?
+        var diskCache: FileManager
+        var diskDirectoryURL: URL?
+        var dispatchQueue: DispatchQueue?
+    }
+    ```
+    
+    **Features**:
+    - **Memory Cache**: NSCache for instant access
+    - **Disk Cache**: FileManager-based persistent storage
+    - **SHA-256 Hashing**: Secure filename generation with CryptoKit
+    - **Async Operations**: DispatchQueue for background processing
+    - **Cache Clearing**: Memory pressure and manual cleanup
+    
+    <Note>
+      The cache manager queries in order: Memory → Disk → Firebase, ensuring optimal performance.
+    </Note>
+  </Tab>
+</Tabs>
+
+### Network/
+
+Firebase integration and API request handlers.
+
+```
+Network/
+├── NetworkModel.swift        # Base class with type aliases
+├── GetRequests/
+│   ├── PostsRequest.swift   # Fetch posts from Firestore
+│   └── UserRequest.swift    # User data operations
+└── PostRequests/
+    └── VideoPostRequest.swift # Upload videos to Storage
+```
+
+<Accordion title="Network Implementation Details">
+  **NetworkModel.swift** (`Network/NetworkModel.swift:11-17`)
+  ```swift
+  class NetworkModel: NSObject {
+      typealias Success = (Any) -> Void
+      typealias Failure = (Error) -> Void
+  }
+  ```
+  
+  **PostsRequest.swift** (`Network/GetRequests/PostsRequest.swift:13-56`)
+  ```swift
+  class PostsRequest: NetworkModel {
+      static let db = Firestore.firestore().collection("Post")
+      
+      static func getPostsByPages(pageNumber: Int, size: Int = 5, 
+                                  success: @escaping Success, 
+                                  failure: @escaping Failure) {
+          db.whereField(field, isGreaterThanOrEqualTo: pageNumber)
+            .whereField(field, isLessThan: pageNumber + size)
+            .getDocuments(completion: { snapshot, error in
+                // Handle response
+            })
+      }
+      
+      static func getPostsVideoURL(name: String, 
+                                   success: @escaping Success, 
+                                   failure: @escaping Failure) {
+          let pathRef = Storage.storage().reference().child("Videos/\(name)")
+          pathRef.downloadURL(completion: { url, error in
+              // Handle video URL
+          })
+      }
+  }
+  ```
+  
+  **Key Features**:
+  - Static methods for easy access
+  - Closure-based completion handlers
+  - Firebase Firestore queries with pagination
+  - Firebase Storage URL generation
+</Accordion>
+
+### Extensions/
+
+Swift extensions adding functionality to existing types.
+
+**Location**: `Extensions/`
+
+<Tabs>
+  <Tab title="Colors.swift">
+    UIColor extensions for app color scheme
+    
+    - Brand colors
+    - Background colors
+    - Text colors
+  </Tab>
+  
+  <Tab title="UIKit Extensions.swift">
+    UIKit convenience methods
+    
+    - UIView helpers
+    - UIViewController utilities
+    - Alert presentation
+  </Tab>
+  
+  <Tab title="String.swift">
+    String manipulation utilities
+    
+    - Formatting methods
+    - Validation
+  </Tab>
+  
+  <Tab title="Number.swift">
+    Number formatting and conversion
+    
+    - Count abbreviation (1K, 1M)
+    - Decimal formatting
+  </Tab>
+  
+  <Tab title="URL.swift">
+    URL handling extensions
+    
+    - Path manipulation
+    - Query parameters
+  </Tab>
+</Tabs>
+
+### Utils/
+
+Utility classes and global constants.
+
+**Location**: `Utils/`
+
+**Constants.swift** (`Utils/Constants.swift:12-22`)
+```swift
+struct ScreenSize {
+    /// Screen width
+    static let Width = UIScreen.main.bounds.width
+    /// Screen height
+    static let Height = UIScreen.main.bounds.height
+}
+
+/// Video File Type
+let VIDEO_FILE_EXTENSION = "mp4"
+```
+
+### Resources/
+
+Assets, animations, and media files.
+
+```
+Resources/
+├── Assets.xcassets/     # Images and icons
+└── Lotties/             # Lottie animation files
+```
+
+**Contents**:
+- App icons and tab bar icons
+- Profile background images
+- Loading animations (Lottie JSON)
+- Media button custom icon
+
+## File Naming Conventions
+
+The project follows standard Swift naming conventions:
+
+<Accordion title="Naming Patterns">
+  - **ViewControllers**: `[Feature]ViewController.swift`
+    - Example: `HomeViewController.swift`, `ProfileViewController.swift`
+  
+  - **ViewModels**: `[Feature]ViewModel.swift`
+    - Example: `HomeViewModel.swift`, `MediaViewModel.swift`
+  
+  - **Views**: `[Feature][Component]View.swift`
+    - Example: `VideoPlayerView.swift`, `ProfileHeaderView.swift`
+  
+  - **Cells**: `[Feature]TableViewCell.swift` or `[Feature]CollectionViewCell.swift`
+    - Example: `HomeTableViewCell.swift`, `ProfileCollectionViewCell.swift`
+  
+  - **Models**: `[Entity].swift`
+    - Example: `Post.swift`, `User.swift`, `Comment.swift`
+  
+  - **Network**: `[Entity]Request.swift`
+    - Example: `PostsRequest.swift`, `UserRequest.swift`
+</Accordion>
+
+## Build Configuration
+
+**Xcode Project**: `KD Tiktok-Clone.xcodeproj`
+**Workspace**: `KD Tiktok-Clone.xcworkspace` (for CocoaPods)
+
+<Note>
+  Always open the `.xcworkspace` file when working with the project, not the `.xcodeproj`, to ensure CocoaPods dependencies are properly linked.
+</Note>
+
+## Dependency Management
+
+The project uses **CocoaPods** for dependency management.
+
+**Podfile Location**: Root of project directory
+
+**Installed Pods**:
+- SnapKit (UI layout)
+- RxSwift (reactive programming)
+- MarqueeLabel (scrolling text)
+- lottie-ios (animations)
+- Firebase (backend services)
+
+## Next Steps
+
+Learn about the implementation patterns:
+- [Architecture Overview](/architecture/overview) - High-level architecture and tech stack
+- [MVVM Pattern](/architecture/mvvm-pattern) - Detailed MVVM implementation with RxSwift

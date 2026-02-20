@@ -1,0 +1,385 @@
+---
+title: "ProfileViewController"
+description: "User profile controller with collection view grid layout and stretchy header parallax effect for displaying user videos and information"
+---
+
+## Overview
+
+`ProfileViewController` displays a user's profile with a sticky header showing profile information, a slide bar for content filtering, and a grid collection view of the user's posted videos. It features a parallax stretching effect on the background image when scrolling.
+
+**Location**: `KD Tiktok-Clone/Modules/Profile/ProfileViewController.swift`
+
+## Key Components
+
+### UI Components
+
+<ParamField path="collectionView" type="UICollectionView">
+  Main collection view displaying user videos in a 3-column grid layout with custom flow layout for header parallax effects.
+</ParamField>
+
+<ParamField path="profileHeader" type="ProfileHeaderView">
+  Header view containing profile picture, follower counts, bio, and action buttons (Follow, Message, etc.).
+</ParamField>
+
+<ParamField path="profileBackgroundImgView" type="UIImageView">
+  Background image view positioned behind the collection view with stretchy parallax behavior on scroll.
+</ParamField>
+
+### Properties
+
+<ParamField path="CELLID" type="String">
+  Reuse identifier for profile collection view cells ("ProfileCell").
+</ParamField>
+
+<ParamField path="PROFILE_HEADER_ID" type="String">
+  Reuse identifier for profile header view ("ProfileHeader").
+</ParamField>
+
+<ParamField path="SLIDEBAR_ID" type="String">
+  Reuse identifier for slide bar header view ("ProfileSlideBar").
+</ParamField>
+
+<ParamField path="disposeBag" type="DisposeBag">
+  RxSwift dispose bag for managing observable subscriptions.
+</ParamField>
+
+## Core Methods
+
+### setupView()
+
+Configures the collection view with custom layout and background image.
+
+```swift
+func setupView() {
+    self.view.backgroundColor = .Background
+    
+    // Collection View with custom layout
+    let collectionViewLayout = ProfileCollectionViewFlowLayout(navBarHeight: getStatusBarHeight())
+    collectionViewLayout.minimumLineSpacing = 1
+    collectionViewLayout.minimumInteritemSpacing = 0
+    
+    collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
+    collectionView.translatesAutoresizingMaskIntoConstraints = false
+    collectionView.backgroundColor = .clear
+    collectionView.contentInsetAdjustmentBehavior = .never
+    collectionView.alwaysBounceVertical = true
+    collectionView.showsVerticalScrollIndicator = false
+    collectionView.delegate = self
+    collectionView.dataSource = self
+    
+    view.addSubview(collectionView)
+    collectionView.snp.makeConstraints({ make in
+        make.edges.equalToSuperview()
+    })
+    
+    // Register cells and headers
+    collectionView.register(
+        UINib(nibName: "ProfileHeaderView", bundle: nil),
+        forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+        withReuseIdentifier: PROFILE_HEADER_ID
+    )
+    collectionView.register(
+        ProfileSlideBarView.self,
+        forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+        withReuseIdentifier: SLIDEBAR_ID
+    )
+    collectionView.register(
+        ProfileCollectionViewCell.self,
+        forCellWithReuseIdentifier: CELLID
+    )
+    
+    // Profile Background Image
+    profileBackgroundImgView = UIImageView(image: #imageLiteral(resourceName: "ProfileBackground"))
+    profileBackgroundImgView.translatesAutoresizingMaskIntoConstraints = false
+    profileBackgroundImgView.contentMode = .scaleAspectFill
+    profileBackgroundImgView.alpha = 0.6
+    self.view.insertSubview(profileBackgroundImgView, belowSubview: collectionView)
+    profileBackgroundImgView.snp.makeConstraints({ make in
+        make.top.left.right.equalToSuperview()
+        make.height.equalTo(150)
+    })
+}
+```
+
+<Note>
+  The custom `ProfileCollectionViewFlowLayout` enables parallax effects and sticky header behavior.
+</Note>
+
+### setupBindings()
+
+Establishes RxSwift bindings to the ProfileViewModel for alert messages.
+
+```swift
+func setupBindings() {
+    ProfileViewModel.shared.displayAlertMessage
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { message in
+            self.showAlert(message)
+        }).disposed(by: disposeBag)
+}
+```
+
+## Collection View Implementation
+
+### UICollectionViewDataSource
+
+<ParamField path="numberOfSections(in:)" type="func">
+  Returns 2 sections: section 0 for profile header, section 1 for video grid.
+  
+  ```swift
+  func numberOfSections(in collectionView: UICollectionView) -> Int {
+      return 2
+  }
+  ```
+</ParamField>
+
+<ParamField path="numberOfItemsInSection" type="func">
+  Returns 0 items for header section, 20 for video grid (placeholder count).
+  
+  ```swift
+  func collectionView(_ collectionView: UICollectionView, 
+                      numberOfItemsInSection section: Int) -> Int {
+      if section == 1 {
+          return 20 // TODO: Fetch Data then change this
+      }
+      return 0
+  }
+  ```
+</ParamField>
+
+<ParamField path="cellForItemAt" type="func">
+  Dequeues and returns profile collection view cells.
+  
+  ```swift
+  func collectionView(_ collectionView: UICollectionView,
+                      cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+      let cell = collectionView.dequeueReusableCell(
+          withReuseIdentifier: CELLID,
+          for: indexPath
+      )
+      return cell
+  }
+  ```
+</ParamField>
+
+### Supplementary Views
+
+<ParamField path="viewForSupplementaryElementOfKind" type="func">
+  Provides header views for both sections.
+  
+  ```swift
+  func collectionView(_ collectionView: UICollectionView,
+                      viewForSupplementaryElementOfKind kind: String,
+                      at indexPath: IndexPath) -> UICollectionReusableView {
+      if indexPath.section == 0 {
+          if kind == UICollectionView.elementKindSectionHeader {
+              let header = collectionView.dequeueReusableSupplementaryView(
+                  ofKind: kind,
+                  withReuseIdentifier: PROFILE_HEADER_ID,
+                  for: indexPath
+              ) as! ProfileHeaderView
+              profileHeader = header
+              return header
+          }
+      }
+      
+      if indexPath.section == 1 {
+          if kind == UICollectionView.elementKindSectionHeader {
+              let header = collectionView.dequeueReusableSupplementaryView(
+                  ofKind: kind,
+                  withReuseIdentifier: SLIDEBAR_ID,
+                  for: indexPath
+              ) as! ProfileSlideBarView
+              return header
+          }
+      }
+      
+      return UICollectionReusableView.init()
+  }
+  ```
+</ParamField>
+
+## UICollectionViewDelegateFlowLayout
+
+### referenceSizeForHeaderInSection
+
+Defines header sizes for each section.
+
+```swift
+func collectionView(_ collectionView: UICollectionView,
+                    layout collectionViewLayout: UICollectionViewLayout,
+                    referenceSizeForHeaderInSection section: Int) -> CGSize {
+    switch section {
+    case 0:
+        return CGSize.init(width: ScreenSize.Width, height: 420)
+    case 1:
+        return CGSize.init(width: ScreenSize.Width, height: 42)
+    default:
+        return .zero
+    }
+}
+```
+
+<Note>
+  Section 0 header is 420pt tall for profile information, section 1 is 42pt for the slide bar.
+</Note>
+
+### sizeForItemAt
+
+Calculates cell size for the 3-column grid layout.
+
+```swift
+func collectionView(_ collectionView: UICollectionView,
+                    layout collectionViewLayout: UICollectionViewLayout,
+                    sizeForItemAt indexPath: IndexPath) -> CGSize {
+    let itemWidth = (ScreenSize.Width - CGFloat(Int(ScreenSize.Width) % 3)) / 3.0 - 1.0
+    let itemHeight = itemWidth * 1.3
+    return CGSize.init(width: itemWidth, height: itemHeight)
+}
+```
+
+<Note>
+  Cells maintain a 1:1.3 aspect ratio (width:height) typical of vertical videos.
+</Note>
+
+## Scroll Effects
+
+### scrollViewDidScroll(_:)
+
+Implements parallax and stretching effects on the background image.
+
+```swift
+func scrollViewDidScroll(_ scrollView: UIScrollView) {
+    let offsetY = scrollView.contentOffset.y
+    
+    if offsetY < 0 {
+        // Stretch when pulling down
+        stretchProfileBackgroundWhenScroll(offsetY: offsetY)
+    } else {
+        // Parallax when scrolling up
+        profileBackgroundImgView.transform = CGAffineTransform(
+            translationX: 0,
+            y: -offsetY
+        )
+    }
+}
+```
+
+### stretchProfileBackgroundWhenScroll(offsetY:)
+
+Creates the stretchy header effect when scrolling down.
+
+```swift
+func stretchProfileBackgroundWhenScroll(offsetY: CGFloat) {
+    let scaleRatio: CGFloat = abs(offsetY) / 500.0
+    let scaledHeight: CGFloat = scaleRatio * profileBackgroundImgView.frame.height
+    
+    profileBackgroundImgView.transform = CGAffineTransform
+        .init(scaleX: scaleRatio + 1.0, y: scaleRatio + 1.0)
+        .concatenating(CGAffineTransform.init(translationX: 0, y: scaledHeight))
+}
+```
+
+<Note>
+  The stretchy effect uses a scale ratio of `abs(offsetY) / 500.0` for smooth expansion.
+</Note>
+
+## Parallax Effect Breakdown
+
+### Scrolling Up (offsetY > 0)
+
+Background image translates upward in sync with scroll, creating a parallax effect:
+
+```swift
+profileBackgroundImgView.transform = CGAffineTransform(translationX: 0, y: -offsetY)
+```
+
+### Scrolling Down (offsetY < 0)
+
+Background image scales and stretches, creating a "rubber band" effect:
+
+```swift
+// Calculate scale based on pull distance
+let scaleRatio = abs(offsetY) / 500.0
+
+// Apply scale transform
+let scaleTransform = CGAffineTransform(scaleX: scaleRatio + 1.0, y: scaleRatio + 1.0)
+
+// Add translation to keep it centered
+let scaledHeight = scaleRatio * profileBackgroundImgView.frame.height
+let translationTransform = CGAffineTransform(translationX: 0, y: scaledHeight)
+
+// Combine transforms
+profileBackgroundImgView.transform = scaleTransform.concatenating(translationTransform)
+```
+
+## Layout Structure
+
+### Section 0: Profile Header
+- **Height**: 420pt
+- **Content**: Profile picture, username, follower/following counts, bio, action buttons
+- **Behavior**: Scrolls with content
+
+### Section 1: Content Grid
+- **Header Height**: 42pt (slide bar for filtering: Posts, Likes, Private)
+- **Cell Layout**: 3 columns with 1pt spacing
+- **Cell Aspect Ratio**: 1:1.3 (width:height)
+- **Content**: User's posted videos in thumbnail grid
+
+## Usage Example
+
+```swift
+// Initialize ProfileViewController
+let profileVC = ProfileViewController()
+
+// Push to navigation stack
+navigationController?.pushViewController(profileVC, animated: true)
+
+// Handle scroll effects
+extension ProfileViewController: UIScrollViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offsetY = scrollView.contentOffset.y
+        
+        if offsetY < 0 {
+            // Stretch effect when pulling down
+            stretchProfileBackgroundWhenScroll(offsetY: offsetY)
+        } else {
+            // Parallax effect when scrolling up
+            profileBackgroundImgView.transform = CGAffineTransform(
+                translationX: 0,
+                y: -offsetY
+            )
+        }
+    }
+}
+```
+
+## Custom Layout
+
+### ProfileCollectionViewFlowLayout
+
+Custom `UICollectionViewFlowLayout` subclass that handles:
+- Sticky header behavior for the slide bar
+- Parallax scrolling for the profile header
+- Navigation bar height compensation
+
+```swift
+let collectionViewLayout = ProfileCollectionViewFlowLayout(navBarHeight: getStatusBarHeight())
+collectionViewLayout.minimumLineSpacing = 1
+collectionViewLayout.minimumInteritemSpacing = 0
+```
+
+## Dependencies
+
+- **UIKit**: Core UI framework
+- **SnapKit**: Auto Layout DSL
+- **RxSwift**: Reactive data binding
+
+## Related Components
+
+- `ProfileHeaderView`: Custom header with profile information
+- `ProfileSlideBarView`: Tab bar for filtering content
+- `ProfileCollectionViewCell`: Grid cell for video thumbnails
+- `ProfileCollectionViewFlowLayout`: Custom layout with parallax support
+- `ProfileViewModel`: Shared view model managing profile data

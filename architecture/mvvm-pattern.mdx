@@ -1,0 +1,688 @@
+---
+title: "MVVM Pattern"
+description: "Detailed explanation of MVVM architecture implementation with RxSwift in the TikTok Clone"
+---
+
+## Introduction
+
+The TikTok Clone implements the **Model-View-ViewModel (MVVM)** architectural pattern enhanced with **RxSwift** for reactive data binding. This pattern provides clear separation between UI logic, business logic, and data models, resulting in more maintainable and testable code.
+
+## MVVM Architecture
+
+### Pattern Overview
+
+```
+┌──────────────────────────────────────────────────┐
+│                    View                          │
+│  (UIViewController, UITableViewCell, UIView)     │
+│  • Displays UI                                   │
+│  • Handles user interactions                     │
+│  • Binds to ViewModel observables               │
+└─────────────────┬────────────────────────────────┘
+                  │
+                  │ 1. User actions
+                  │ 2. Observes data changes (RxSwift)
+                  ↓
+┌──────────────────────────────────────────────────┐
+│                 ViewModel                        │
+│  (Business Logic Layer)                          │
+│  • Processes user actions                        │
+│  • Manages application state                     │
+│  • Exposes data via RxSwift Subjects            │
+│  • Coordinates with Model layer                  │
+└─────────────────┬────────────────────────────────┘
+                  │
+                  │ Fetches/updates data
+                  ↓
+┌──────────────────────────────────────────────────┐
+│                   Model                          │
+│  (Data Layer)                                    │
+│  • Data structures (Post, User, Comment)         │
+│  • Network requests (Firebase)                   │
+│  • Cache management                              │
+└──────────────────────────────────────────────────┘
+```
+
+<Note>
+  The key advantage of MVVM is that the ViewModel has no direct reference to the View, enabling unit testing of business logic without UI dependencies.
+</Note>
+
+## RxSwift Integration
+
+### Why RxSwift?
+
+RxSwift provides reactive extensions for Swift, enabling:
+- **Declarative code** - Describe what should happen, not how
+- **Automatic updates** - UI updates when data changes
+- **Composable operations** - Chain and transform data streams
+- **Memory management** - Automatic subscription cleanup with DisposeBag
+
+### Key RxSwift Components
+
+<Tabs>
+  <Tab title="Subjects">
+    Subjects are both Observables and Observers, allowing you to emit and subscribe to values.
+    
+    **BehaviorSubject** - Stores the latest value and emits it to new subscribers
+    ```swift
+    let isLoading = BehaviorSubject<Bool>(value: true)
+    ```
+    Use for: State that needs an initial value (loading states, toggles)
+    
+    **PublishSubject** - Emits only new values to subscribers
+    ```swift
+    let posts = PublishSubject<[Post]>()
+    let error = PublishSubject<Error>()
+    ```
+    Use for: Events and data streams (API responses, user actions)
+  </Tab>
+  
+  <Tab title="Observables">
+    Observables represent a stream of data that can be observed.
+    
+    ```swift
+    viewModel.posts
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { posts in
+            // Update UI with posts
+        })
+        .disposed(by: disposeBag)
+    ```
+    
+    **Key Methods**:
+    - `.asObserver()` - Convert Subject to Observable
+    - `.observeOn(MainScheduler.instance)` - Execute on main thread
+    - `.subscribe(onNext:)` - React to new values
+    - `.disposed(by:)` - Automatic cleanup
+  </Tab>
+  
+  <Tab title="DisposeBag">
+    Manages subscription lifecycles and prevents memory leaks.
+    
+    ```swift
+    class HomeViewController: BaseViewController {
+        let disposeBag = DisposeBag()
+        
+        // Subscriptions are automatically disposed when
+        // the DisposeBag (and thus the controller) is deallocated
+    }
+    ```
+    
+    All RxSwift subscriptions must be disposed, and DisposeBag provides automatic cleanup when the object is deallocated.
+  </Tab>
+</Tabs>
+
+## Implementation Example: Home Module
+
+Let's examine the Home module's MVVM implementation in detail.
+
+### Model Layer
+
+**Post.swift** (`Entity/Models/Post.swift:13-85`)
+
+```swift
+struct Post: Codable {
+    var id: String
+    var video: String
+    var videoURL: URL?
+    var videoFileExtension: String?
+    var videoHeight: Int
+    var videoWidth: Int
+    var autherID: String
+    var autherName: String
+    var caption: String
+    var music: String
+    var likeCount: Int
+    var shareCount: Int
+    var commentID: String
+    
+    // Initialize from Firebase dictionary
+    init(dictionary: [String: Any]) {
+        id = dictionary["id"] as? String ?? ""
+        video = dictionary["video"] as? String ?? ""
+        videoURL = URL(string: dictionary["videoURL"] as? String ?? "")
+        autherID = dictionary["author"] as? String ?? ""
+        caption = dictionary["caption"] as? String ?? ""
+        likeCount = dictionary["likeCount"] as? Int ?? 0
+        // ... more fields
+    }
+}
+```
+
+**PostsRequest.swift** (`Network/GetRequests/PostsRequest.swift:22-34`)
+
+```swift
+static func getPostsByPages(pageNumber: Int, size: Int = 5,
+                           success: @escaping Success,
+                           failure: @escaping Failure) {
+    db.whereField(field, isGreaterThanOrEqualTo: pageNumber)
+      .whereField(field, isLessThan: pageNumber + size)
+      .getDocuments(completion: { snapshot, error in
+          if let error = error {
+              failure(error)
+          } else if let snapshot = snapshot {
+              success(snapshot)
+          }
+      })
+}
+```
+
+### ViewModel Layer
+
+**HomeViewModel.swift** (`Modules/Home/HomeViewModel.swift:14-90`)
+
+```swift
+class HomeViewModel: NSObject {
+    
+    // MARK: - State Management
+    private(set) var currentVideoIndex = 0
+    
+    // RxSwift Subjects for reactive data binding
+    let isLoading = BehaviorSubject<Bool>(value: true)
+    let posts = PublishSubject<[Post]>()
+    let error = PublishSubject<Error>()
+    
+    // Internal data storage
+    private var docs = [Post]()
+    
+    // MARK: - Initialization
+    override init() {
+        super.init()
+        getPosts(pageNumber: 1, size: 10)
+    }
+    
+    // MARK: - Business Logic
+    
+    /// Setup Audio Session for video playback
+    func setAudioMode() {
+        do {
+            try! AVAudioSession.sharedInstance()
+                .setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch (let err) {
+            print("setAudioMode error:" + err.localizedDescription)
+        }
+    }
+    
+    /// Fetch posts from Firebase with pagination
+    func getPosts(pageNumber: Int, size: Int) {
+        // Emit loading state
+        self.isLoading.onNext(true)
+        
+        // Network request
+        PostsRequest.getPostsByPages(
+            pageNumber: pageNumber,
+            size: size,
+            success: { [weak self] data in
+                guard let self = self else { return }
+                
+                if let data = data as? QuerySnapshot {
+                    // Transform Firebase data to Post models
+                    for document in data.documents {
+                        var post = Post(dictionary: document.data())
+                        post.id = document.documentID
+                        self.docs.append(post)
+                    }
+                    
+                    // Emit new posts
+                    self.posts.onNext(self.docs)
+                    self.isLoading.onNext(false)
+                }
+            },
+            failure: { [weak self] error in
+                guard let self = self else { return }
+                self.isLoading.onNext(false)
+                self.error.onNext(error)
+            }
+        )
+    }
+}
+
+// MARK: - User Interaction Handlers
+extension HomeViewModel {
+    func likeVideo() {
+        // TODO: Implement like functionality
+    }
+    
+    func commentVideo(comment: String) {
+        // TODO: Implement comment functionality
+    }
+}
+```
+
+**Key Patterns**:
+- **Subjects expose state**: `isLoading`, `posts`, `error` are public observables
+- **Private data storage**: `docs` array is internal implementation detail
+- **Weak self**: Prevents retain cycles in closures
+- **Single responsibility**: ViewModel only handles business logic
+
+### View Layer
+
+**HomeViewController.swift** (`Modules/Home/HomeViewController.swift:15-195`)
+
+```swift
+class HomeViewController: BaseViewController {
+    
+    // MARK: - UI Components
+    var mainTableView: UITableView!
+    lazy var loadingAnimation: AnimationView = {
+        let animationView = AnimationView(name: "LoadingAnimation")
+        animationView.loopMode = .loop
+        return animationView
+    }()
+    
+    // MARK: - ViewModel & State
+    let viewModel = HomeViewModel()
+    let disposeBag = DisposeBag()
+    var data = [Post]()
+    
+    // MARK: - Lifecycle
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        viewModel.setAudioMode()
+        setupView()
+        setupBinding()  // Key step: Bind ViewModel to View
+        setupObservers()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Resume video playback
+        if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+            cell.play()
+        }
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Pause video playback
+        if let cell = mainTableView.visibleCells.first as? HomeTableViewCell {
+            cell.pause()
+        }
+    }
+    
+    // MARK: - View Setup
+    func setupView() {
+        // Table View configuration
+        mainTableView = UITableView()
+        mainTableView.backgroundColor = .black
+        mainTableView.isPagingEnabled = true
+        mainTableView.contentInsetAdjustmentBehavior = .never
+        mainTableView.showsVerticalScrollIndicator = false
+        mainTableView.separatorStyle = .none
+        
+        view.addSubview(mainTableView)
+        mainTableView.snp.makeConstraints({ make in
+            make.edges.equalToSuperview()
+        })
+        
+        mainTableView.register(UINib(nibName: "HomeTableViewCell", bundle: nil),
+                              forCellReuseIdentifier: cellId)
+        mainTableView.delegate = self
+        mainTableView.dataSource = self
+        mainTableView.prefetchDataSource = self
+    }
+    
+    // MARK: - Reactive Binding (THE CORE OF MVVM)
+    func setupBinding() {
+        // Observe posts updates
+        viewModel.posts
+            .asObserver()
+            .observeOn(MainScheduler.instance)
+            .subscribe(onNext: { [weak self] posts in
+                self?.data = posts
+                self?.mainTableView.reloadData()
+            })
+            .disposed(by: disposeBag)
+        
+        // Observe loading state
+        viewModel.isLoading
+            .asObserver()
+            .observeOn(MainScheduler.instance)
+            .subscribe(onNext: { [weak self] isLoading in
+                if isLoading {
+                    self?.loadingAnimation.alpha = 1
+                    self?.loadingAnimation.play()
+                } else {
+                    self?.loadingAnimation.alpha = 0
+                    self?.loadingAnimation.stop()
+                }
+            })
+            .disposed(by: disposeBag)
+        
+        // Observe errors
+        viewModel.error
+            .asObserver()
+            .observeOn(MainScheduler.instance)
+            .subscribe(onNext: { [weak self] err in
+                self?.showAlert(err.localizedDescription)
+            })
+            .disposed(by: disposeBag)
+    }
+}
+
+// MARK: - Table View Data Source
+extension HomeViewController: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, 
+                   numberOfRowsInSection section: Int) -> Int {
+        return self.data.count
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(
+            withIdentifier: cellId, for: indexPath
+        ) as! HomeTableViewCell
+        cell.configure(post: data[indexPath.row])
+        cell.delegate = self
+        return cell
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return tableView.frame.height
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   willDisplay cell: UITableViewCell,
+                   forRowAt indexPath: IndexPath) {
+        // Pause video until scroll ends
+        if let cell = cell as? HomeTableViewCell {
+            currentIndex = indexPath.row
+            cell.pause()
+        }
+    }
+    
+    func tableView(_ tableView: UITableView,
+                   didEndDisplaying cell: UITableViewCell,
+                   forRowAt indexPath: IndexPath) {
+        // Clean up when cell is no longer visible
+        if let cell = cell as? HomeTableViewCell {
+            cell.pause()
+        }
+    }
+}
+
+// MARK: - Scroll View Delegate
+extension HomeViewController: UIScrollViewDelegate {
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView,
+                                  willDecelerate decelerate: Bool) {
+        // Resume playback when scrolling ends
+        let cell = mainTableView.cellForRow(
+            at: IndexPath(row: currentIndex, section: 0)
+        ) as? HomeTableViewCell
+        cell?.replay()
+    }
+}
+```
+
+**Key Patterns**:
+- **No business logic in View**: Controller only handles UI updates
+- **Reactive subscriptions**: View automatically updates when ViewModel changes
+- **Main thread scheduling**: UI updates always on main thread with `observeOn(MainScheduler.instance)`
+- **Weak self**: Prevents retain cycles in closures
+- **Automatic cleanup**: DisposeBag handles subscription disposal
+
+## Data Flow Diagram
+
+### Loading Posts Flow
+
+```
+1. User opens app
+       ↓
+2. HomeViewController.viewDidLoad()
+       ↓
+3. setupBinding() - Subscribe to ViewModel observables
+       ↓
+4. HomeViewModel.init() - Auto-fetch posts
+       ↓
+5. viewModel.isLoading.onNext(true)
+       ↓
+6. View receives loading state → Show animation
+       ↓
+7. PostsRequest.getPostsByPages() - Firebase query
+       ↓
+8. Success: Convert documents to Post models
+       ↓
+9. viewModel.posts.onNext(posts)
+       ↓
+10. View receives posts → Reload table view
+        ↓
+11. viewModel.isLoading.onNext(false)
+        ↓
+12. View receives loading state → Hide animation
+```
+
+## Advanced MVVM Example: Media Module
+
+The Media module demonstrates a more complex ViewModel with singleton pattern.
+
+**MediaViewModel.swift** (`Modules/Media/MediaViewModel.swift:12-45`)
+
+```swift
+class MediaViewModel: NSObject {
+    
+    // Singleton pattern for shared state
+    static let shared: MediaViewModel = {
+        return MediaViewModel.init()
+    }()
+    
+    private override init() {
+        super.init()
+    }
+    
+    // MARK: - Business Logic
+    
+    /// Post video to Firebase
+    func postVideo(videoURL: URL,
+                   caption: String,
+                   success: @escaping (String) -> Void,
+                   failure: @escaping (Error) -> Void) {
+        // Generate random video filename
+        let videoName = randomString(length: 10) + ".\(VIDEO_FILE_EXTENSION)"
+        
+        // Create Post model with metadata
+        let post = Post(
+            id: "REMOVE",
+            video: videoName,
+            videoURL: videoURL,
+            videoFileExtension: VIDEO_FILE_EXTENSION,
+            videoHeight: 1800,
+            videoWidth: 900,
+            autherID: "n96kixJqddGqZpMqL8t8",
+            autherName: "Sam",
+            caption: caption,
+            music: "Random Music Name",
+            likeCount: randomNumber(min: 1000, max: 100000),
+            shareCount: randomNumber(min: 1000, max: 100000),
+            commentID: "random"
+        )
+        
+        // Upload to Firebase
+        VideoPostRequest.publishPost(
+            post: post,
+            videoURL: videoURL,
+            success: { data in
+                let str = data as? String
+                success(str!)
+            },
+            failure: failure
+        )
+    }
+    
+    // MARK: - Utilities
+    
+    private func randomString(length: Int) -> String {
+        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        return String((0..<length).map{ _ in letters.randomElement()! })
+    }
+    
+    private func randomNumber(min: Int, max: Int) -> Int {
+        return Int.random(in: min...max)
+    }
+}
+```
+
+<Note>
+  MediaViewModel uses a singleton pattern because video posting state should be shared across the app. This ensures consistent behavior when the media controller is presented modally.
+</Note>
+
+## Profile Module: Shared ViewModel Pattern
+
+**ProfileViewModel.swift** (`Modules/Profile/ProfileViewModel.swift:12-31`)
+
+```swift
+class ProfileViewModel: NSObject {
+    
+    // Singleton for app-wide profile state
+    static let shared: ProfileViewModel = {
+        return ProfileViewModel.init()
+    }()
+    
+    // RxSwift Subjects
+    let displayAlertMessage = PublishSubject<String>()
+    let cleardCache = PublishSubject<Bool>()
+    
+    private override init() {
+        super.init()
+    }
+    
+    /// Display alert message across app
+    func displayMessage(message: String) {
+        displayAlertMessage.onNext(message)
+    }
+}
+```
+
+**Usage in HomeViewController** (`Modules/Home/HomeViewController.swift:118-126`):
+
+```swift
+// Home module observes Profile module's shared state
+ProfileViewModel.shared.cleardCache
+    .asObserver()
+    .observeOn(MainScheduler.instance)
+    .subscribe(onNext: { cleard in
+        if cleard {
+            // Reload data after cache clear
+        }
+    })
+    .disposed(by: disposeBag)
+```
+
+This demonstrates **cross-module communication** through shared ViewModels.
+
+## Best Practices
+
+<Accordion title="ViewModel Design">
+  - **No UIKit imports**: ViewModels should never import UIKit (except AVFoundation for media)
+  - **Expose state, not methods**: Use Subjects to expose state changes
+  - **Single responsibility**: Each ViewModel handles one feature or screen
+  - **Weak self in closures**: Always use `[weak self]` to prevent retain cycles
+  - **Private storage**: Keep internal data structures private
+</Accordion>
+
+<Accordion title="View Design">
+  - **No business logic**: Views should only handle UI updates and user interactions
+  - **Separate binding setup**: Create dedicated `setupBinding()` method
+  - **DisposeBag per controller**: Each view controller manages its own DisposeBag
+  - **Main thread updates**: Always use `observeOn(MainScheduler.instance)` for UI updates
+  - **Lifecycle awareness**: Subscribe in `viewDidLoad`, cleanup automatic via DisposeBag
+</Accordion>
+
+<Accordion title="RxSwift Patterns">
+  - **Choose correct Subject type**:
+    - `BehaviorSubject` for state with initial values
+    - `PublishSubject` for events and streams
+  - **Always dispose subscriptions**: Use `.disposed(by: disposeBag)`
+  - **Avoid nested subscriptions**: Compose with operators like `flatMap`
+  - **Error handling**: Always subscribe to error subjects
+  - **Testing**: Subjects make unit testing easy (just emit test values)
+</Accordion>
+
+<Accordion title="Memory Management">
+  - **Weak references**: Use `[weak self]` in all closures
+  - **DisposeBag lifecycle**: Tied to view controller lifecycle
+  - **Singleton caution**: Only use for truly shared state
+  - **Cache management**: Implement proper cleanup in cache managers
+</Accordion>
+
+## Testing Considerations
+
+MVVM with RxSwift enables comprehensive unit testing:
+
+```swift
+// Example test for HomeViewModel
+func testPostsLoading() {
+    let viewModel = HomeViewModel()
+    let expectation = XCTestExpectation(description: "Posts loaded")
+    
+    viewModel.posts
+        .subscribe(onNext: { posts in
+            XCTAssertGreaterThan(posts.count, 0)
+            expectation.fulfill()
+        })
+        .disposed(by: disposeBag)
+    
+    wait(for: [expectation], timeout: 5.0)
+}
+```
+
+Benefits:
+- ViewModels have no UI dependencies (easily testable)
+- Subjects can emit test data
+- Business logic isolated from view code
+- Network layer can be mocked
+
+## Common Pitfalls
+
+<Accordion title="Retain Cycles">
+  **Problem**: Forgetting `[weak self]` in closures causes memory leaks.
+  
+  **Solution**: Always use weak references:
+  ```swift
+  viewModel.posts.subscribe(onNext: { [weak self] posts in
+      self?.updateUI(posts)
+  })
+  ```
+</Accordion>
+
+<Accordion title="Background Thread UI Updates">
+  **Problem**: Updating UI from background threads causes crashes.
+  
+  **Solution**: Always use `observeOn(MainScheduler.instance)`:
+  ```swift
+  viewModel.posts
+      .asObserver()
+      .observeOn(MainScheduler.instance)  // ← Critical!
+      .subscribe(onNext: { posts in
+          self.tableView.reloadData()
+      })
+  ```
+</Accordion>
+
+<Accordion title="Missing Dispose">
+  **Problem**: Forgetting `.disposed(by: disposeBag)` causes memory leaks.
+  
+  **Solution**: Every subscription must be disposed:
+  ```swift
+  viewModel.posts
+      .subscribe(onNext: { posts in })
+      .disposed(by: disposeBag)  // ← Required!
+  ```
+</Accordion>
+
+## Summary
+
+The TikTok Clone's MVVM implementation provides:
+
+- **Clear separation** between UI, business logic, and data
+- **Reactive data flow** with automatic UI updates
+- **Testable architecture** with isolated ViewModels
+- **Memory safety** with proper disposal patterns
+- **Scalable structure** for growing feature sets
+
+## Related Documentation
+
+- [Architecture Overview](/architecture/overview) - High-level architecture concepts
+- [Project Structure](/architecture/project-structure) - File organization and modules

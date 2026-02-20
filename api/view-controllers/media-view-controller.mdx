@@ -1,0 +1,472 @@
+---
+title: "MediaViewController"
+description: "Video recording controller managing camera capture, recording controls, and video posting workflow with permission handling"
+---
+
+## Overview
+
+`MediaViewController` handles the complete video recording and posting flow, including camera setup, recording controls, post-recording editing options, and navigation to the posting screen. It manages camera/microphone permissions and provides TikTok-style recording features.
+
+**Location**: `KD Tiktok-Clone/Modules/Media/MediaViewController.swift`
+
+## Key Components
+
+### UI Components
+
+<ParamField path="previewView" type="UIView">
+  Container view displaying the live camera preview with rounded corners (12pt radius).
+</ParamField>
+
+<ParamField path="recordView" type="RecordButton">
+  Custom recording button with long-press gesture support and progress animation during recording.
+</ParamField>
+
+<ParamField path="permissionView" type="AccessPermissionView">
+  Modal view displayed when camera/microphone access is not granted, with buttons to request permissions.
+</ParamField>
+
+<ParamField path="playerView" type="MediaPlayerView">
+  Video player view shown after recording completes, allowing preview before posting.
+</ParamField>
+
+<ParamField path="nextBtn" type="UIButton">
+  Button to proceed to the posting screen after recording is complete.
+</ParamField>
+
+### Recording Controls
+
+<ParamField path="soundImgView" type="UIImageView">
+  Icon for adding background sound to the recording.
+</ParamField>
+
+<ParamField path="flipImgView" type="UIImageView">
+  Icon to flip between front and rear cameras.
+</ParamField>
+
+<ParamField path="speedImgView" type="UIImageView">
+  Icon for adjusting recording speed (slow-motion, normal, time-lapse).
+</ParamField>
+
+<ParamField path="filterImgView" type="UIImageView">
+  Icon for applying visual filters to the camera feed.
+</ParamField>
+
+<ParamField path="timerImgView" type="UIImageView">
+  Icon for setting a countdown timer before recording starts.
+</ParamField>
+
+<ParamField path="flashImgView" type="UIImageView">
+  Icon for toggling camera flash.
+</ParamField>
+
+<ParamField path="albumImgView" type="UIImageView">
+  Icon for accessing photo library to select existing videos.
+</ParamField>
+
+### Post-Recording Options
+
+<ParamField path="addSoundImgView" type="UIImageView">
+  Icon for adding audio tracks after recording.
+</ParamField>
+
+<ParamField path="effectsImgView" type="UIImageView">
+  Icon for applying visual effects to recorded video.
+</ParamField>
+
+<ParamField path="addTextImgView" type="UIImageView">
+  Icon for overlaying text on the video.
+</ParamField>
+
+<ParamField path="addStickersImgView" type="UIImageView">
+  Icon for adding stickers and emoji to the video.
+</ParamField>
+
+### Properties
+
+<ParamField path="cameraManager" type="CameraManager">
+  Manager handling AVCaptureSession, camera configuration, recording operations, and file management.
+</ParamField>
+
+<ParamField path="videoURL" type="URL?">
+  URL pointing to the recorded video file in temporary storage.
+</ParamField>
+
+<ParamField path="cornerRadius" type="CGFloat">
+  Corner radius for the preview view (12.0 points).
+</ParamField>
+
+## Core Methods
+
+### setupView()
+
+Initializes the view and checks for camera/microphone permissions.
+
+```swift
+func setupView() {
+    if cameraManager.cameraAndAudioAccessPermitted {
+        setUpSession()
+    } else {
+        self.view.addSubview(permissionView)
+        permissionView.cameraAccessBtn.addTarget(self, action: #selector(askForCameraAccess), for: .touchUpInside)
+        permissionView.microphoneAccessBtn.addTarget(self, action: #selector(askForMicrophoneAccess), for: .touchUpInside)
+        permissionView.exitBtn.addTarget(self, action: #selector(dismissController), for: .touchUpInside)
+    }
+}
+```
+
+<Note>
+  If permissions are not granted, the permission view is displayed instead of the camera preview.
+</Note>
+
+### setUpSession()
+
+Configures the camera session and adds the preview layer to the view.
+
+```swift
+func setUpSession() {
+    setupRecognizers()
+    permissionView.removeFromSuperview()
+    cameraManager.delegate = self
+    previewView.layer.cornerRadius = cornerRadius
+    cameraManager.addPreviewLayerToView(view: previewView)
+    view.sendSubviewToBack(previewView)
+}
+```
+
+### Recording Methods
+
+<ParamField path="startRecording()" type="func">
+  Initiates video recording and updates UI state.
+  
+  ```swift
+  func startRecording() {
+      hideLabelsAndImages(isHidden: true)
+      recordView.startRecordingAnimation()
+      cameraManager.startRecording()
+  }
+  ```
+</ParamField>
+
+<ParamField path="stopRecording()" type="func">
+  Stops the active recording session.
+  
+  ```swift
+  func stopRecording() {
+      cameraManager.stopRecording()
+      recordView.stopRecodingAnimation()
+  }
+  ```
+</ParamField>
+
+<ParamField path="finishRecording(_:_:)" type="func">
+  RecordingDelegate callback invoked when recording completes.
+  
+  ```swift
+  func finishRecording(_ videoURL: URL?, _ err: Error?) {
+      recordView.isHidden = true
+      exitBtn.isHidden = false
+      nextBtn.alpha = 1
+      addSoundImgView.alpha = 1
+      addSoundLbl.alpha = 1
+      effectsImgView.alpha = 1
+      effectsLbl.alpha = 1
+      addTextImgView.alpha = 1
+      addTextLbl.alpha = 1
+      addStickersImgView.alpha = 1
+      addStickersLbl.alpha = 1
+      
+      if let error = err {
+          self.showAlert(error.localizedDescription)
+      } else {
+          self.videoURL = videoURL
+      }
+      
+      presentPlayerView()
+  }
+  ```
+</ParamField>
+
+<ParamField path="presentPlayerView()" type="func">
+  Displays the recorded video in a player view for preview.
+  
+  ```swift
+  func presentPlayerView() {
+      if let url = videoURL {
+          playerView = MediaPlayerView(frame: previewView.frame, videoURL: url)
+          view.addSubview(playerView!)
+          view.bringSubviewToFront(exitBtn)
+          playerView?.play()
+      }
+  }
+  ```
+</ParamField>
+
+### Navigation
+
+<ParamField path="navigateToPosting(_:)" type="@IBAction">
+  Saves video to library and navigates to MediaPostingViewController.
+  
+  ```swift
+  @IBAction func navigateToPosting(_ sender: Any) {
+      let vc = UIStoryboard(name: "MediaViews", bundle: nil)
+          .instantiateViewController(identifier: "MediaPostingVC") as! MediaPostingViewController
+      guard let videoURL = self.videoURL else { return }
+      cameraManager.saveToLibrary(videoURL: videoURL)
+      vc.videoURL = videoURL
+      self.navigationController?.pushViewController(vc, animated: true)
+  }
+  ```
+</ParamField>
+
+## Permission Handling
+
+### askForCameraAccess()
+
+```swift
+@objc func askForCameraAccess() {
+    cameraManager.askForCameraAccess({ [weak self] access in
+        guard let self = self else { return }
+        if access {
+            self.permissionView.cameraAccessPermitted()
+            if (self.cameraManager.cameraAndAudioAccessPermitted) { 
+                self.setUpSession() 
+            }
+        } else {
+            self.alertCameraAccessNeeded()
+        }
+    })
+}
+```
+
+### askForMicrophoneAccess()
+
+```swift
+@objc func askForMicrophoneAccess() {
+    cameraManager.askForMicrophoneAccess({ [weak self] access in
+        guard let self = self else { return }
+        if access {
+            self.permissionView.microphoneAccessPermitted()
+            if (self.cameraManager.cameraAndAudioAccessPermitted) { 
+                self.setUpSession() 
+            }
+        } else {
+            self.alertCameraAccessNeeded()
+        }
+    })
+}
+```
+
+### alertCameraAccessNeeded()
+
+```swift
+func alertCameraAccessNeeded() {
+    let settingsAppURL = URL(string: UIApplication.openSettingsURLString)!
+    let alert = UIAlertController(
+        title: "Need Camera Access",
+        message: "Camera access is required to make full use of this function.",
+        preferredStyle: .alert
+    )
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+    alert.addAction(UIAlertAction(title: "Settings", style: .default, handler: { (alert) -> Void in
+        UIApplication.shared.open(settingsAppURL, options: [:], completionHandler: nil)
+    }))
+    present(alert, animated: true, completion: nil)
+}
+```
+
+<Note>
+  The permission flow guides users to Settings if they previously denied access.
+</Note>
+
+## Gesture Recognizers
+
+### setupRecognizers()
+
+Configures tap and long-press gestures for all interactive elements.
+
+```swift
+func setupRecognizers() {
+    // Recording button with long press
+    let recordLongPressGesture = UILongPressGestureRecognizer(
+        target: self, 
+        action: #selector(recordBtnPressed(sender:))
+    )
+    recordLongPressGesture.minimumPressDuration = 0
+    recordView.addGestureRecognizer(recordLongPressGesture)
+    
+    // Sound selection
+    let soundTapGesture = UITapGestureRecognizer(
+        target: self, 
+        action: #selector(setBackgroundSound)
+    )
+    soundLbl.addGestureRecognizer(soundTapGesture)
+    
+    // Camera flip
+    let flipTapGesture = UITapGestureRecognizer(
+        target: self, 
+        action: #selector(flipCamera)
+    )
+    flipImgView.addGestureRecognizer(flipTapGesture)
+    
+    // Additional gestures for speed, filters, timer, flash, album, etc.
+}
+```
+
+### recordBtnPressed(sender:)
+
+Handles the recording button's long-press gesture states.
+
+```swift
+@objc fileprivate func recordBtnPressed(sender: UILongPressGestureRecognizer) {
+    let location = sender.location(in: self.view)
+    switch sender.state {
+    case .began:
+        startRecording()
+    case .changed:
+        recordView.locationChanged(location: location)
+    case .cancelled, .ended:
+        stopRecording()
+    default:
+        break
+    }
+}
+```
+
+<Note>
+  The recording starts immediately on press and stops when released, mimicking TikTok's UX.
+</Note>
+
+## CameraManager
+
+**Location**: `KD Tiktok-Clone/Modules/Media/CameraManager.swift`
+
+Manages AVFoundation camera and recording operations.
+
+### Properties
+
+<ParamField path="captureSession" type="AVCaptureSession?">
+  Core capture session managing camera inputs and outputs.
+</ParamField>
+
+<ParamField path="captureDevice" type="AVCaptureDevice">
+  Active camera device (front or rear).
+</ParamField>
+
+<ParamField path="cameraAndAudioAccessPermitted" type="Bool">
+  Combined permission state for both camera and microphone access.
+</ParamField>
+
+<ParamField path="movieOutput" type="AVCaptureMovieFileOutput">
+  Output for recording video files with audio.
+</ParamField>
+
+<ParamField path="previewLayer" type="AVCaptureVideoPreviewLayer">
+  Layer displaying live camera feed.
+</ParamField>
+
+### Key Methods
+
+<ParamField path="addPreviewLayerToView(view:)" type="func">
+  Adds camera preview layer to the specified view.
+  
+  ```swift
+  func addPreviewLayerToView(view: UIView) {
+      if cameraAndAudioAccessPermitted {
+          setupCamera {
+              self.embeddingView = view
+              DispatchQueue.main.async {
+                  guard let previewLayer = self.previewLayer else { return }
+                  previewLayer.frame = view.layer.bounds
+                  view.clipsToBounds = true
+                  view.layer.addSublayer(previewLayer)
+              }
+          }
+      }
+  }
+  ```
+</ParamField>
+
+<ParamField path="saveToLibrary(videoURL:)" type="func">
+  Saves recorded video to the device's photo library.
+  
+  ```swift
+  func saveToLibrary(videoURL: URL) {
+      if PHPhotoLibrary.authorizationStatus() != .authorized {
+          PHPhotoLibrary.requestAuthorization({ status in
+              if status == .authorized {
+                  self.photoLibrary?.performChanges({
+                      PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+                  }, completionHandler: { (saved, error) in
+                      // Handle save result
+                  })
+              }
+          })
+      }
+  }
+  ```
+</ParamField>
+
+<ParamField path="removeAllTempFiles()" type="func">
+  Cleans up temporary video files from previous recording sessions.
+</ParamField>
+
+## Lifecycle Methods
+
+<ParamField path="viewDidLoad()" type="override func">
+  Clears temporary files and initializes the view.
+  
+  ```swift
+  override func viewDidLoad() {
+      super.viewDidLoad()
+      cameraManager.removeAllTempFiles()
+      setupView()
+  }
+  ```
+</ParamField>
+
+<ParamField path="viewWillDisappear(_:)" type="override func">
+  Pauses video player when navigating away.
+  
+  ```swift
+  override func viewWillDisappear(_ animated: Bool) {
+      super.viewWillDisappear(animated)
+      playerView?.pause()
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```swift
+// Present MediaViewController modally
+let mediaVC = UIStoryboard(name: "MediaViews", bundle: nil)
+    .instantiateViewController(identifier: "MediaVC") as! MediaViewController
+let navController = UINavigationController(rootViewController: mediaVC)
+navController.modalPresentationStyle = .fullScreen
+present(navController, animated: true)
+
+// Handle recording completion
+extension MediaViewController: RecordingDelegate {
+    func finishRecording(_ videoURL: URL?, _ err: Error?) {
+        if let url = videoURL {
+            // Process recorded video
+            self.videoURL = url
+            presentPlayerView()
+        }
+    }
+}
+```
+
+## Dependencies
+
+- **UIKit**: Core UI framework
+- **AVFoundation**: Camera capture and video recording
+- **Photos**: Photo library access and saving
+
+## Related Components
+
+- `MediaPostingViewController`: Next screen for adding captions and posting
+- `RecordButton`: Custom recording button with animation
+- `AccessPermissionView`: Permission request UI
+- `MediaPlayerView`: Video preview player
+- `CameraManager`: AVFoundation wrapper

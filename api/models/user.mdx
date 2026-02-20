@@ -1,0 +1,226 @@
+---
+title: "User"
+description: "Represents a user profile in the TikTok clone app with personal information, content lists, and social metrics."
+---
+
+## Overview
+
+The `User` struct represents a user profile in the app, containing personal information, content references, and social engagement statistics.
+
+## Properties
+
+<ParamField path="uid" type="String" required>
+  Unique identifier for the user, typically from Firebase Authentication
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  Display name of the user shown on their profile and posts
+</ParamField>
+
+<ParamField path="description" type="String" required>
+  User's bio or profile description
+</ParamField>
+
+<ParamField path="douyinID" type="Int" required>
+  Douyin (TikTok) style numeric ID for the user account
+</ParamField>
+
+<ParamField path="tags" type="[String]" required>
+  Array of interest tags or categories associated with the user
+</ParamField>
+
+<ParamField path="profilePic" type="String" required>
+  URL or reference string to the user's profile picture
+</ParamField>
+
+<ParamField path="posts" type="[String]" required>
+  Array of post IDs created by this user
+</ParamField>
+
+<ParamField path="likedPosts" type="[String]" required>
+  Array of post IDs that the user has liked
+</ParamField>
+
+<ParamField path="followerCount" type="Int" required>
+  Number of users following this user
+</ParamField>
+
+<ParamField path="followCount" type="Int" required>
+  Number of users this user is following
+</ParamField>
+
+<ParamField path="likeCount" type="Int" required>
+  Total number of likes received across all user's posts
+</ParamField>
+
+<ParamField path="friendsCount" type="Int" required>
+  Number of mutual connections or friends
+</ParamField>
+
+## Initialization
+
+```swift
+let user = User(
+    uid: "user123",
+    name: "Jane Smith",
+    description: "Content creator | Dance enthusiast 💃",
+    douyinID: 987654321,
+    tags: ["dance", "music", "comedy"],
+    profilePic: "https://example.com/profiles/jane.jpg",
+    posts: ["post1", "post2", "post3"],
+    likedPosts: ["liked1", "liked2"],
+    followerCount: 15420,
+    followCount: 234,
+    likeCount: 89500,
+    friendsCount: 56
+)
+```
+
+## Usage Examples
+
+### Creating a New User Profile
+
+```swift
+import Foundation
+
+// Create a new user after authentication
+let newUser = User(
+    uid: firebaseUser.uid,
+    name: "New Creator",
+    description: "Just joined!",
+    douyinID: generateDouyinID(),
+    tags: [],
+    profilePic: "",
+    posts: [],
+    likedPosts: [],
+    followerCount: 0,
+    followCount: 0,
+    likeCount: 0,
+    friendsCount: 0
+)
+```
+
+### Updating User Statistics
+
+```swift
+// When a user gets a new follower
+var user = currentUser
+user.followerCount += 1
+
+// When a user creates a new post
+user.posts.append(newPost.id)
+
+// When a user likes a post
+user.likedPosts.append(post.id)
+```
+
+### Displaying Profile Information
+
+```swift
+// Profile view controller
+class ProfileViewController: UIViewController {
+    var user: User!
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        nameLabel.text = user.name
+        bioLabel.text = user.description
+        douyinIDLabel.text = "@\(user.douyinID)"
+        
+        followerCountLabel.text = "\(user.followerCount)"
+        followingCountLabel.text = "\(user.followCount)"
+        likesCountLabel.text = "\(user.likeCount)"
+        
+        // Load profile image
+        if let url = URL(string: user.profilePic) {
+            loadImage(from: url)
+        }
+        
+        // Display user tags
+        tagsCollectionView.tags = user.tags
+    }
+}
+```
+
+## Social Metrics
+
+<Expandable title="Understanding User Metrics">
+  The User model tracks several social engagement metrics:
+  
+  - **followerCount**: Users who follow this account
+  - **followCount**: Accounts this user follows
+  - **likeCount**: Total likes across all posts by this user
+  - **friendsCount**: Mutual followers or connections
+  
+  These metrics are typically displayed on the user's profile page and updated in real-time as engagement changes.
+</Expandable>
+
+## Content Management
+
+### Managing User Posts
+
+```swift
+// Add a new post
+func addPost(_ postID: String, to user: inout User) {
+    user.posts.append(postID)
+}
+
+// Remove a post
+func removePost(_ postID: String, from user: inout User) {
+    user.posts.removeAll { $0 == postID }
+}
+
+// Get user's post count
+func getPostCount(for user: User) -> Int {
+    return user.posts.count
+}
+```
+
+### Managing Liked Posts
+
+```swift
+// Like a post
+func likePost(_ postID: String, user: inout User) {
+    if !user.likedPosts.contains(postID) {
+        user.likedPosts.append(postID)
+    }
+}
+
+// Unlike a post
+func unlikePost(_ postID: String, user: inout User) {
+    user.likedPosts.removeAll { $0 == postID }
+}
+
+// Check if user liked a post
+func hasLiked(_ postID: String, user: User) -> Bool {
+    return user.likedPosts.contains(postID)
+}
+```
+
+## Profile Customization
+
+```swift
+// Update profile information
+func updateProfile(
+    user: inout User,
+    name: String? = nil,
+    description: String? = nil,
+    profilePic: String? = nil,
+    tags: [String]? = nil
+) {
+    if let name = name { user.name = name }
+    if let description = description { user.description = description }
+    if let profilePic = profilePic { user.profilePic = profilePic }
+    if let tags = tags { user.tags = tags }
+}
+
+// Example usage
+var user = currentUser
+updateProfile(
+    user: &user,
+    name: "Updated Name",
+    description: "New bio text",
+    tags: ["newTag1", "newTag2"]
+)
+```

@@ -1,0 +1,334 @@
+---
+title: CameraManager
+description: Manager for video recording with AVFoundation capture session, permissions, and file output
+---
+
+## Overview
+
+`CameraManager` handles all camera-related functionality including video capture, recording sessions, permission management, and video file output. It uses AVFoundation's capture session with support for both front and back cameras, audio input, and video stabilization.
+
+## Protocols and Type Aliases
+
+### RecordingDelegate
+
+```swift
+protocol RecordingDelegate: class {
+    func finishRecording(_ videoURL: URL?, _ err: Error?)
+}
+```
+
+Delegate protocol for receiving recording completion callbacks.
+
+<ResponseField name="videoURL" type="URL?">
+  File path to the recorded video, or nil if recording failed.
+</ResponseField>
+
+<ResponseField name="err" type="Error?">
+  Error object if recording failed, nil on success.
+</ResponseField>
+
+### Type Aliases
+
+```swift
+typealias AccessPermissionCompletionBlock = (Bool) -> Void
+typealias RegularCompletionBlock = () -> Void
+```
+
+## Properties
+
+<ParamField path="captureSession" type="AVCaptureSession?">
+  Main capture session with customized settings for video and audio.
+</ParamField>
+
+<ParamField path="captureDevice" type="AVCaptureDevice!">
+  Active capture device, defaults to back-facing wide-angle camera.
+</ParamField>
+
+<ParamField path="cameraAndAudioAccessPermitted" type="Bool!">
+  True if both camera and microphone permissions are granted.
+</ParamField>
+
+<ParamField path="embeddingView" type="UIView?">
+  Parent view that contains the camera preview layer.
+</ParamField>
+
+<ParamField path="delegate" type="RecordingDelegate!">
+  Weak reference to the recording delegate for completion callbacks.
+</ParamField>
+
+## Initialization
+
+```swift
+let cameraManager = CameraManager()
+```
+
+The initializer automatically checks current authorization status for camera and microphone access.
+
+**Example:**
+
+```swift
+class RecordingViewController: UIViewController, RecordingDelegate {
+    let cameraManager = CameraManager()
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        cameraManager.delegate = self
+    }
+    
+    func finishRecording(_ videoURL: URL?, _ err: Error?) {
+        if let error = err {
+            print("Recording failed: \(error.localizedDescription)")
+        } else if let url = videoURL {
+            print("Video saved at: \(url)")
+        }
+    }
+}
+```
+
+## Camera Setup
+
+### addPreviewLayerToView
+
+Sets up the camera capture session and adds the preview layer to the specified view.
+
+```swift
+func addPreviewLayerToView(view: UIView)
+```
+
+<ParamField path="view" type="UIView">
+  The view where the camera preview will be displayed.
+</ParamField>
+
+**Example:**
+
+```swift
+override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    
+    if cameraManager.cameraAndAudioAccessPermitted {
+        cameraManager.addPreviewLayerToView(view: previewContainerView)
+    } else {
+        requestPermissions()
+    }
+}
+```
+
+**Features:**
+- Uses back-facing wide-angle camera by default
+- High-quality session preset
+- Automatic video stabilization
+- Audio recording support
+- Preview layer with aspect fill gravity
+
+## Recording Session
+
+### startRecording
+
+Starts recording video to a temporary file location.
+
+```swift
+func startRecording()
+```
+
+**Example:**
+
+```swift
+@IBAction func recordButtonTapped(_ sender: UIButton) {
+    if !isRecording {
+        cameraManager.startRecording()
+        sender.setTitle("Stop", for: .normal)
+        isRecording = true
+    }
+}
+```
+
+The recorded video is saved to a temporary location:
+
+```swift
+let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+    .appendingPathComponent("tempMovie\(Date())")
+    .appendingPathExtension(VIDEO_FILE_EXTENSION)
+```
+
+### stopRecording
+
+Stops the current recording session.
+
+```swift
+func stopRecording()
+```
+
+**Example:**
+
+```swift
+@IBAction func stopButtonTapped(_ sender: UIButton) {
+    cameraManager.stopRecording()
+    sender.setTitle("Record", for: .normal)
+    isRecording = false
+    // Wait for finishRecording delegate callback
+}
+```
+
+**Note:** The capture session is stopped and the movie output recording is finalized. The `finishRecording` delegate method will be called with the video URL upon completion.
+
+### resetCaptureSession
+
+Resets the capture session and removes all temporary files.
+
+```swift
+func resetCaptureSession()
+```
+
+**Example:**
+
+```swift
+@IBAction func reshootButtonTapped(_ sender: UIButton) {
+    cameraManager.resetCaptureSession()
+    // Start a fresh recording
+}
+```
+
+## Permission Management
+
+### askForCameraAccess
+
+Requests camera access permission from the user.
+
+```swift
+func askForCameraAccess(_ completion: @escaping AccessPermissionCompletionBlock)
+```
+
+<ParamField path="completion" type="(Bool) -> Void">
+  Completion handler called on the main thread with the permission result.
+</ParamField>
+
+**Example:**
+
+```swift
+cameraManager.askForCameraAccess { granted in
+    if granted {
+        print("Camera access granted")
+        self.checkIfAllPermissionsGranted()
+    } else {
+        self.showPermissionDeniedAlert()
+    }
+}
+```
+
+### askForMicrophoneAccess
+
+Requests microphone access permission from the user.
+
+```swift
+func askForMicrophoneAccess(_ completion: @escaping AccessPermissionCompletionBlock)
+```
+
+<ParamField path="completion" type="(Bool) -> Void">
+  Completion handler called on the main thread with the permission result.
+</ParamField>
+
+**Example:**
+
+```swift
+cameraManager.askForMicrophoneAccess { granted in
+    if granted {
+        print("Microphone access granted")
+        self.checkIfAllPermissionsGranted()
+    } else {
+        self.showPermissionDeniedAlert()
+    }
+}
+```
+
+### Complete Permission Flow
+
+```swift
+func requestPermissions() {
+    cameraManager.askForCameraAccess { [weak self] cameraGranted in
+        if cameraGranted {
+            self?.cameraManager.askForMicrophoneAccess { audioGranted in
+                if audioGranted {
+                    // Both permissions granted
+                    self?.setupCamera()
+                }
+            }
+        }
+    }
+}
+
+func setupCamera() {
+    if cameraManager.cameraAndAudioAccessPermitted {
+        cameraManager.addPreviewLayerToView(view: previewView)
+    }
+}
+```
+
+## Save to Photo Library
+
+### saveToLibrary
+
+Saves the recorded video to the user's photo library.
+
+```swift
+func saveToLibrary(videoURL: URL)
+```
+
+<ParamField path="videoURL" type="URL">
+  File URL of the video to save to the photo library.
+</ParamField>
+
+**Example:**
+
+```swift
+func finishRecording(_ videoURL: URL?, _ err: Error?) {
+    guard let url = videoURL, err == nil else {
+        print("Recording failed: \(err?.localizedDescription ?? "Unknown error")")
+        return
+    }
+    
+    // Save to photo library
+    cameraManager.saveToLibrary(videoURL: url)
+    
+    // Or upload to Firebase
+    uploadVideo(url)
+}
+```
+
+**Features:**
+- Automatically requests photo library permission if needed
+- Asynchronous saving on background queue
+- Error handling with descriptive messages
+
+## AVCaptureFileOutputRecordingDelegate
+
+The `CameraManager` conforms to `AVCaptureFileOutputRecordingDelegate`:
+
+```swift
+func fileOutput(_ output: AVCaptureFileOutput, 
+                didFinishRecordingTo outputFileURL: URL, 
+                from connections: [AVCaptureConnection], 
+                error: Error?)
+```
+
+This delegate method is called automatically when recording finishes and forwards the result to your `RecordingDelegate`.
+
+## Capture Session Configuration
+
+The capture session is configured with:
+
+- **Session Preset**: `.high` for maximum quality
+- **Video Input**: Back-facing wide-angle camera
+- **Audio Input**: Default audio device
+- **Output**: `AVCaptureMovieFileOutput` for video files
+- **Video Stabilization**: Auto mode for smooth recording
+- **Preview**: `AVCaptureVideoPreviewLayer` with aspect fill
+
+## Thread Safety
+
+All capture session operations run on a dedicated serial queue:
+
+```swift
+fileprivate var sessionQueue: DispatchQueue = DispatchQueue(label: "com.CameraSessionQueue")
+```
+
+This ensures thread-safe access to AVFoundation components and prevents UI blocking during camera operations.

@@ -1,0 +1,464 @@
+---
+title: "Extensions"
+description: "Swift extensions providing utility functions for colors, strings, numbers, URLs, and UIKit components"
+---
+
+The app uses several Swift extensions to add convenient functionality to standard types and UIKit classes.
+
+## Colors Extension
+
+Custom color palette for consistent theming throughout the app.
+
+**Location:** `Extensions/Colors.swift:12`
+
+### Named Colors
+
+<ParamField path="Background" type="UIColor">
+  Primary background color for the app
+</ParamField>
+
+<ParamField path="LabelBackground" type="UIColor">
+  Background color for label containers
+</ParamField>
+
+<ParamField path="Yellow" type="UIColor">
+  Accent yellow color
+</ParamField>
+
+<ParamField path="Blue" type="UIColor">
+  Accent blue color for interactive elements
+</ParamField>
+
+<ParamField path="Red" type="UIColor">
+  Primary red accent color (TikTok brand color)
+</ParamField>
+
+### Implementation
+
+```swift
+import UIKit
+
+extension UIColor {
+    static let Background = UIColor(named: "Background")!
+    static let LabelBackground = UIColor(named: "LabelBackground")!
+    static let Yellow = UIColor(named: "Yellow")!
+    static let Blue = UIColor(named: "Blue")!
+    static let Red = UIColor(named: "Red")!
+}
+```
+
+### Usage
+
+```swift
+// Set view background
+view.backgroundColor = .Background
+
+// Set button tint
+button.tintColor = .Red
+
+// Set label background
+label.backgroundColor = .LabelBackground
+```
+
+---
+
+## String Extension
+
+Utility functions for string formatting and number conversion.
+
+**Location:** `Extensions/String.swift:11`
+
+### Methods
+
+<ParamField path="format(decimal:maximumDigits:minimumDigits:)" type="static func">
+  Formats a decimal number as a string with specified precision
+  
+  **Parameters:**
+  - `decimal: Float` - The number to format
+  - `maximumDigits: Int` - Maximum fraction digits (default: 1)
+  - `minimumDigits: Int` - Minimum fraction digits (default: 1)
+  
+  **Returns:** `String?` - Formatted number string
+</ParamField>
+
+### Implementation
+
+```swift
+import Foundation
+
+extension String {
+    static func format(decimal: Float, 
+                      _ maximumDigits: Int = 1, 
+                      _ minimumDigits: Int = 1) -> String? {
+        let number = NSNumber(value: decimal)
+        let numberFormatter = NumberFormatter()
+        numberFormatter.maximumFractionDigits = maximumDigits
+        numberFormatter.minimumFractionDigits = minimumDigits
+        return numberFormatter.string(from: number)
+    }
+}
+```
+
+### Usage Examples
+
+<Tabs>
+  <Tab title="Basic Formatting">
+    ```swift
+    let formatted = String.format(decimal: 3.14159)
+    // Returns: "3.1"
+    ```
+  </Tab>
+  <Tab title="Custom Precision">
+    ```swift
+    let precise = String.format(decimal: 3.14159, 3, 2)
+    // Returns: "3.142" (max 3 digits, min 2 digits)
+    ```
+  </Tab>
+  <Tab title="No Decimals">
+    ```swift
+    let whole = String.format(decimal: 42.0, 0, 0)
+    // Returns: "42"
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Number Extension
+
+Extends Int with social media number formatting (K for thousands, M for millions).
+
+**Location:** `Extensions/Number.swift:11`
+
+### Methods
+
+<ParamField path="shorten()" type="func">
+  Converts large numbers to shortened format with K or M suffix
+  
+  **Returns:** `String` - Formatted number string
+  
+  **Examples:**
+  - 1,234 → "1.2K"
+  - 1,500,000 → "1.5M"
+  - 999 → "999"
+</ParamField>
+
+### Implementation
+
+```swift
+import Foundation
+
+extension Int {
+    /**
+     * Shorten the number to *thousand* or *million*
+     * - Returns: the shorten number and the suffix as *String*
+     */
+    func shorten() -> String {
+        let number = Double(self)
+        let thousand = number / 1000
+        let million = number / 1000000
+        
+        if million >= 1.0 {
+            return "\(round(million * 10) / 10)M"
+        }
+        else if thousand >= 1.0 {
+            return "\(round(thousand * 10) / 10)K"
+        }
+        else {
+            return "\(self)"
+        }
+    }
+}
+```
+
+### Usage Examples
+
+<Tabs>
+  <Tab title="Likes Count">
+    ```swift
+    let likes = 15300
+    likeCountLabel.text = likes.shorten()
+    // Displays: "15.3K"
+    ```
+  </Tab>
+  <Tab title="Followers">
+    ```swift
+    let followers = 2500000
+    followerLabel.text = "\(followers.shorten()) followers"
+    // Displays: "2.5M followers"
+    ```
+  </Tab>
+  <Tab title="Small Numbers">
+    ```swift
+    let views = 847
+    viewLabel.text = views.shorten()
+    // Displays: "847"
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## URL Extension
+
+Utility methods for URL scheme manipulation used in video streaming.
+
+**Location:** `Extensions/URL.swift:11`
+
+### Methods
+
+<ParamField path="convertToRedirectURL(scheme:)" type="func">
+  Adds a custom scheme prefix to trigger AVAssetResourceLoaderDelegate
+  
+  **Parameters:**
+  - `scheme: String` - Prefix to add to the URL scheme
+  
+  **Returns:** `URL?` - Modified URL with custom scheme
+  
+  **Example:** `https://example.com/video.mp4` → `httpsstreaming://example.com/video.mp4`
+</ParamField>
+
+<ParamField path="convertFromRedirectURL(prefix:)" type="func">
+  Removes custom scheme prefix to restore original URL
+  
+  **Parameters:**
+  - `prefix: String` - Prefix to remove from the URL scheme
+  
+  **Returns:** `URL?` - Restored original URL
+</ParamField>
+
+### Implementation
+
+```swift
+import Foundation
+
+extension URL {
+    /// Adds the scheme prefix to a copy of the receiver.
+    func convertToRedirectURL(scheme: String) -> URL? {
+        var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
+        let schemeCopy = components?.scheme ?? ""
+        components?.scheme = schemeCopy + scheme
+        return components?.url
+    }
+    
+    /// Removes the scheme prefix from a copy of the receiver.
+    func convertFromRedirectURL(prefix: String) -> URL? {
+        guard var comps = URLComponents(url: self, resolvingAgainstBaseURL: false) 
+        else { return nil }
+        guard let scheme = comps.scheme else { return nil }
+        comps.scheme = scheme.replacingOccurrences(of: prefix, with: "")
+        return comps.url
+    }
+}
+```
+
+### Usage Examples
+
+<Tabs>
+  <Tab title="Video Streaming">
+    ```swift
+    let videoURL = URL(string: "https://example.com/video.mp4")!
+    
+    // Convert to streaming URL to trigger custom resource loader
+    guard let streamingURL = videoURL.convertToRedirectURL(scheme: "streaming") else {
+        print("Could not convert URL")
+        return
+    }
+    // streamingURL: httpsstreaming://example.com/video.mp4
+    
+    let asset = AVURLAsset(url: streamingURL)
+    asset.resourceLoader.setDelegate(self, queue: .main)
+    ```
+  </Tab>
+  <Tab title="Restore Original URL">
+    ```swift
+    let streamingURL = URL(string: "httpsstreaming://example.com/video.mp4")!
+    
+    guard let originalURL = streamingURL.convertFromRedirectURL(prefix: "streaming") 
+    else {
+        return
+    }
+    // originalURL: https://example.com/video.mp4
+    
+    // Use original URL for caching or network requests
+    let request = URLRequest(url: originalURL)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## UIKit Extensions
+
+Utility extensions for UIViewController and UIView classes.
+
+**Location:** `Extensions/UIKit Extensions.swift`
+
+## UIViewController Extension
+
+Helper methods for common view controller operations.
+
+### Methods
+
+<ParamField path="getStatusBarHeight()" type="func">
+  Returns the height of the status bar for the current window
+  
+  **Returns:** `CGFloat` - Status bar height in points
+</ParamField>
+
+<ParamField path="showAlert(_:title:)" type="func">
+  Displays an alert dialog with a message
+  
+  **Parameters:**
+  - `message: String` - Alert message content
+  - `title: String?` - Optional alert title
+</ParamField>
+
+### Implementation
+
+```swift
+import UIKit
+
+extension UIViewController {
+    /// Status Bar Height
+    func getStatusBarHeight() -> CGFloat {
+        let window = UIApplication.shared.windows.filter { $0.isKeyWindow }.first
+        return window?.windowScene?.statusBarManager?.statusBarFrame.height ?? 0
+    }
+    
+    /// Display an alert view if the function is not implemented
+    func showAlert(_ message: String, title: String? = nil) {
+        // Check if one has already presented
+        if let currentAlert = self.presentedViewController as? UIAlertController {
+            currentAlert.message = message
+            return
+        }
+        
+        let alertController = UIAlertController(title: title, 
+                                               message: message, 
+                                               preferredStyle: .alert)
+        alertController.addAction(UIAlertAction(title: "OK", 
+                                               style: .cancel, 
+                                               handler: nil))
+        self.present(alertController, animated: true, completion: nil)
+    }
+}
+```
+
+### Usage Examples
+
+<Tabs>
+  <Tab title="Status Bar Height">
+    ```swift
+    class ProfileViewController: UIViewController {
+        func setupView() {
+            let statusBarHeight = getStatusBarHeight()
+            let collectionViewLayout = ProfileCollectionViewFlowLayout(
+                navBarHeight: statusBarHeight
+            )
+            // Use layout...
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Show Alert">
+    ```swift
+    @objc func setBackgroundSound() {
+        self.showAlert("Background Sound Function is not implemented yet")
+    }
+    
+    // With custom title
+    func handleError(_ error: Error) {
+        self.showAlert(error.localizedDescription, title: "Error")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## UIView Extension
+
+Utility methods for view styling and layout.
+
+### Methods
+
+<ParamField path="makeRounded(color:borderWidth:)" type="func">
+  Makes a view circular with optional border
+  
+  **Parameters:**
+  - `color: UIColor` - Border color
+  - `borderWidth: CGFloat` - Width of the border
+  
+  **Note:** View becomes circular based on its height. Best used with square views.
+</ParamField>
+
+### Implementation
+
+```swift
+extension UIView {
+    func makeRounded(color: UIColor, borderWidth: CGFloat) {
+        self.layer.borderWidth = borderWidth
+        self.layer.masksToBounds = false
+        self.layer.borderColor = color.cgColor
+        self.layer.cornerRadius = self.frame.height / 2
+        self.clipsToBounds = true
+    }
+}
+```
+
+### Usage Examples
+
+<Tabs>
+  <Tab title="Profile Image">
+    ```swift
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        profileImgView.makeRounded(color: .white, borderWidth: 1)
+    }
+    ```
+  </Tab>
+  <Tab title="Circular Button">
+    ```swift
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        followBtn.makeRounded(color: .clear, borderWidth: 0)
+        musicBtn.makeRounded(color: .clear, borderWidth: 0)
+    }
+    ```
+  </Tab>
+  <Tab title="IBOutlet with didSet">
+    ```swift
+    @IBOutlet weak var profileImgView: UIImageView! {
+        didSet {
+            profileImgView.layer.cornerRadius = profileImgView.frame.width / 2
+            profileImgView.layer.borderWidth = 1
+            profileImgView.layer.borderColor = UIColor.Background.cgColor
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Extension Organization
+
+All extensions are organized in the `Extensions/` directory:
+
+```
+Extensions/
+├── Colors.swift           # UIColor named colors
+├── String.swift          # String formatting utilities
+├── Number.swift          # Number formatting (K/M suffixes)
+├── URL.swift             # URL scheme manipulation
+└── UIKit Extensions.swift # UIViewController & UIView helpers
+```
+
+### Best Practices
+
+- Use named colors from `UIColor` extension for consistent theming
+- Apply `.shorten()` to all social media counts (likes, followers, etc.)
+- Use `showAlert()` for user-facing error messages
+- Apply `makeRounded()` in `layoutSubviews()` for circular views
+- Use URL scheme conversion for video streaming with caching

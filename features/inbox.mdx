@@ -1,0 +1,497 @@
+---
+title: Inbox
+description: Messaging and notifications feature for user interactions and communications
+---
+
+The Inbox feature provides messaging, notifications, and social interaction management for users.
+
+## Current Implementation
+
+The InboxViewController provides the basic structure for the messaging interface:
+
+```swift InboxViewController.swift
+import UIKit
+
+class InboxViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Do any additional setup after loading the view.
+    }
+}
+```
+
+<Note>
+The Inbox feature is currently a placeholder view controller. The foundation is in place for implementing messaging, notifications, and activity feeds.
+</Note>
+
+## Planned Features
+
+Based on typical TikTok-style inbox functionality, this feature should include:
+
+### Notification Types
+
+- **Likes**: When someone likes your video
+- **Comments**: New comments on your videos
+- **Followers**: New follower notifications
+- **Mentions**: When you're mentioned in comments
+- **Video posts**: From users you follow
+
+### Direct Messages
+
+- **Chat list**: List of conversations
+- **Real-time messaging**: Send and receive text/media
+- **Typing indicators**: Show when other user is typing
+- **Read receipts**: Message read status
+- **Video/Photo sharing**: Share media in chats
+
+## Recommended Architecture
+
+### View Controller Structure
+
+```swift
+class InboxViewController: UIViewController {
+    
+    // MARK: - UI Components
+    var segmentedControl: UISegmentedControl!
+    var tableView: UITableView!
+    var emptyStateView: UIView!
+    
+    // MARK: - Variables
+    let viewModel = InboxViewModel()
+    var notifications: [Notification] = []
+    var messages: [Conversation] = []
+    var selectedTab: InboxTab = .all
+    
+    enum InboxTab: Int {
+        case all = 0
+        case likes = 1
+        case comments = 2
+        case mentions = 3
+        case followers = 4
+    }
+    
+    // MARK: - Lifecycle
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupView()
+        setupBindings()
+        loadNotifications()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        markNotificationsAsRead()
+    }
+}
+```
+
+### Segmented Control for Tabs
+
+```swift
+func setupSegmentedControl() {
+    let items = ["All", "Likes", "Comments", "Mentions", "Followers"]
+    segmentedControl = UISegmentedControl(items: items)
+    segmentedControl.selectedSegmentIndex = 0
+    segmentedControl.addTarget(
+        self,
+        action: #selector(tabChanged),
+        for: .valueChanged
+    )
+    
+    view.addSubview(segmentedControl)
+    segmentedControl.snp.makeConstraints { make in
+        make.top.equalTo(view.safeAreaLayoutGuide)
+        make.left.right.equalToSuperview().inset(16)
+        make.height.equalTo(32)
+    }
+}
+
+@objc func tabChanged(_ sender: UISegmentedControl) {
+    selectedTab = InboxTab(rawValue: sender.selectedSegmentIndex) ?? .all
+    filterNotifications()
+}
+```
+
+### Table View Configuration
+
+```swift
+func setupTableView() {
+    tableView = UITableView()
+    tableView.delegate = self
+    tableView.dataSource = self
+    tableView.separatorStyle = .singleLine
+    tableView.backgroundColor = .systemBackground
+    
+    view.addSubview(tableView)
+    tableView.snp.makeConstraints { make in
+        make.top.equalTo(segmentedControl.snp.bottom).offset(8)
+        make.left.right.bottom.equalToSuperview()
+    }
+    
+    // Register cells
+    tableView.register(
+        NotificationCell.self,
+        forCellReuseIdentifier: "NotificationCell"
+    )
+    tableView.register(
+        MessageCell.self,
+        forCellReuseIdentifier: "MessageCell"
+    )
+}
+```
+
+## Data Models
+
+### Notification Model
+
+```swift
+enum NotificationType {
+    case like
+    case comment
+    case follow
+    case mention
+    case videoPost
+}
+
+struct Notification {
+    let id: String
+    let type: NotificationType
+    let fromUser: User
+    let targetVideo: Video?
+    let message: String
+    let timestamp: Date
+    var isRead: Bool
+    
+    var timeAgo: String {
+        return timestamp.timeAgoDisplay()
+    }
+}
+```
+
+### Conversation Model
+
+```swift
+struct Conversation {
+    let id: String
+    let participants: [User]
+    let lastMessage: Message?
+    let unreadCount: Int
+    let updatedAt: Date
+    
+    var otherUser: User? {
+        // Return the other participant in a 1-on-1 chat
+        return participants.first(where: { $0.id != currentUserId })
+    }
+}
+
+struct Message {
+    let id: String
+    let senderId: String
+    let text: String?
+    let imageURL: String?
+    let videoURL: String?
+    let timestamp: Date
+    var isRead: Bool
+}
+```
+
+## Table View Implementation
+
+### Notification Cell
+
+```swift
+class NotificationCell: UITableViewCell {
+    
+    var profileImageView: UIImageView!
+    var messageLabel: UILabel!
+    var timestampLabel: UILabel!
+    var thumbnailImageView: UIImageView!
+    var unreadIndicator: UIView!
+    
+    func configure(with notification: Notification) {
+        profileImageView.loadImage(from: notification.fromUser.profileImageURL)
+        messageLabel.text = notification.message
+        timestampLabel.text = notification.timeAgo
+        unreadIndicator.isHidden = notification.isRead
+        
+        if let video = notification.targetVideo {
+            thumbnailImageView.loadImage(from: video.thumbnailURL)
+            thumbnailImageView.isHidden = false
+        } else {
+            thumbnailImageView.isHidden = true
+        }
+    }
+}
+```
+
+### Data Source Methods
+
+```swift
+extension InboxViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return filteredNotifications.count
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(
+            withIdentifier: "NotificationCell",
+            for: indexPath
+        ) as! NotificationCell
+        
+        let notification = filteredNotifications[indexPath.row]
+        cell.configure(with: notification)
+        
+        return cell
+    }
+}
+
+extension InboxViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        
+        let notification = filteredNotifications[indexPath.row]
+        handleNotificationTap(notification)
+    }
+    
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 80
+    }
+}
+```
+
+## Firebase Integration
+
+### Loading Notifications
+
+```swift
+func loadNotifications() {
+    guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+    
+    let db = Firestore.firestore()
+    
+    db.collection("notifications")
+        .whereField("toUserId", isEqualTo: currentUserId)
+        .order(by: "timestamp", descending: true)
+        .limit(to: 50)
+        .addSnapshotListener { [weak self] snapshot, error in
+            guard let documents = snapshot?.documents else { return }
+            
+            self?.notifications = documents.compactMap { doc in
+                return Notification(document: doc)
+            }
+            
+            self?.filterNotifications()
+            self?.tableView.reloadData()
+        }
+}
+```
+
+### Marking as Read
+
+```swift
+func markNotificationsAsRead() {
+    let unreadNotifications = notifications.filter { !$0.isRead }
+    
+    let db = Firestore.firestore()
+    let batch = db.batch()
+    
+    for notification in unreadNotifications {
+        let ref = db.collection("notifications").document(notification.id)
+        batch.updateData(["isRead": true], forDocument: ref)
+    }
+    
+    batch.commit { error in
+        if let error = error {
+            print("Error marking notifications as read: \(error)")
+        }
+    }
+}
+```
+
+### Real-time Message Listener
+
+```swift
+func observeMessages(conversationId: String) {
+    let db = Firestore.firestore()
+    
+    db.collection("conversations")
+        .document(conversationId)
+        .collection("messages")
+        .order(by: "timestamp", descending: false)
+        .addSnapshotListener { [weak self] snapshot, error in
+            guard let changes = snapshot?.documentChanges else { return }
+            
+            for change in changes {
+                if change.type == .added {
+                    let message = Message(document: change.document)
+                    self?.messages.append(message)
+                }
+            }
+            
+            self?.tableView.reloadData()
+            self?.scrollToBottom()
+        }
+}
+```
+
+## Notification Handling
+
+### Handle Notification Tap
+
+```swift
+func handleNotificationTap(_ notification: Notification) {
+    switch notification.type {
+    case .like, .comment:
+        // Navigate to video
+        if let video = notification.targetVideo {
+            navigateToVideo(video)
+        }
+        
+    case .follow:
+        // Navigate to user profile
+        navigateToProfile(notification.fromUser)
+        
+    case .mention:
+        // Navigate to comment thread
+        navigateToComment(notification)
+        
+    case .videoPost:
+        // Navigate to new video
+        if let video = notification.targetVideo {
+            navigateToVideo(video)
+        }
+    }
+}
+
+func navigateToVideo(_ video: Video) {
+    let homeVC = HomeViewController()
+    homeVC.startWithVideo(video)
+    navigationController?.pushViewController(homeVC, animated: true)
+}
+
+func navigateToProfile(_ user: User) {
+    let profileVC = ProfileViewController()
+    profileVC.user = user
+    navigationController?.pushViewController(profileVC, animated: true)
+}
+```
+
+## RxSwift Integration
+
+Use reactive programming for real-time updates:
+
+```swift
+func setupBindings() {
+    viewModel.notifications
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { [weak self] notifications in
+            self?.notifications = notifications
+            self?.filterNotifications()
+            self?.tableView.reloadData()
+        })
+        .disposed(by: disposeBag)
+    
+    viewModel.unreadCount
+        .asObserver()
+        .observeOn(MainScheduler.instance)
+        .subscribe(onNext: { count in
+            // Update tab bar badge
+            self.tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
+        })
+        .disposed(by: disposeBag)
+}
+```
+
+## Empty State
+
+```swift
+func setupEmptyStateView() {
+    emptyStateView = UIView()
+    emptyStateView.isHidden = true
+    
+    let imageView = UIImageView(image: UIImage(systemName: "tray"))
+    imageView.tintColor = .systemGray3
+    imageView.contentMode = .scaleAspectFit
+    
+    let label = UILabel()
+    label.text = "No notifications yet"
+    label.font = .systemFont(ofSize: 16, weight: .medium)
+    label.textColor = .systemGray
+    label.textAlignment = .center
+    
+    emptyStateView.addSubview(imageView)
+    emptyStateView.addSubview(label)
+    
+    view.addSubview(emptyStateView)
+    
+    // Layout constraints...
+}
+
+func updateEmptyState() {
+    emptyStateView.isHidden = !filteredNotifications.isEmpty
+    tableView.isHidden = filteredNotifications.isEmpty
+}
+```
+
+<Warning>
+Always handle user privacy when implementing messaging:
+
+- Request notification permissions
+- Respect user blocking and muting preferences
+- Implement message encryption for sensitive data
+- Allow users to control who can message them
+</Warning>
+
+## Next Steps
+
+<Steps>
+
+1. **Create UI Components**: Build table view cells for different notification types
+2. **Implement ViewModel**: Create InboxViewModel with RxSwift observables
+3. **Add Firebase Listeners**: Set up real-time listeners for notifications and messages
+4. **Build Chat Interface**: Create separate ChatViewController for direct messages
+5. **Add Push Notifications**: Integrate Firebase Cloud Messaging
+6. **Implement Filtering**: Add filters for notification types
+7. **Create Message Composer**: Build UI for sending messages
+
+</Steps>
+
+## Integration Points
+
+### With Home Feed
+
+When users interact with videos (like, comment), create notifications:
+
+```swift
+func likeVideo(_ video: Video) {
+    // ... like the video
+    
+    // Create notification
+    createNotification(
+        type: .like,
+        fromUser: currentUser,
+        toUser: video.author,
+        targetVideo: video
+    )
+}
+```
+
+### With Profile
+
+When following users, send notifications:
+
+```swift
+func followUser(_ user: User) {
+    // ... follow the user
+    
+    // Create notification
+    createNotification(
+        type: .follow,
+        fromUser: currentUser,
+        toUser: user,
+        targetVideo: nil
+    )
+}
+```
