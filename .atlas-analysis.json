@@ -1,0 +1,102 @@
+{
+  "projectType": "frontend",
+  "projectName": "TikTok Clone",
+  "projectDescription": "An iOS TikTok clone built with Swift and Firebase featuring video streaming, recording, and social interactions.",
+  "theme": "almond",
+  "primaryColor": "#00F2EA",
+  "lightColor": "#69C9D0",
+  "darkColor": "#EE1D52",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "firebase-setup"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/project-structure",
+              "architecture/mvvm-pattern"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/home-feed",
+              "features/video-recording",
+              "features/user-profile",
+              "features/video-cache",
+              "features/discover",
+              "features/inbox"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "components/view-controllers",
+              "components/custom-views",
+              "components/extensions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/post",
+              "api/models/user",
+              "api/models/comment"
+            ]
+          },
+          {
+            "group": "Managers",
+            "pages": [
+              "api/managers/video-cache-manager",
+              "api/managers/camera-manager",
+              "api/managers/network-model"
+            ]
+          },
+          {
+            "group": "View Controllers",
+            "pages": [
+              "api/view-controllers/home-view-controller",
+              "api/view-controllers/media-view-controller",
+              "api/view-controllers/profile-view-controller"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full-screen video feed with infinite scroll",
+    "Video recording and upload to Firebase Storage",
+    "Two-level video caching (memory + disk)",
+    "User profiles with stretchy headers",
+    "Comments and social interactions",
+    "MVVM architecture with RxSwift"
+  ],
+  "publicApiSurface": [
+    "HomeViewController",
+    "MediaViewController",
+    "ProfileViewController",
+    "DiscoverViewController",
+    "InboxViewController",
+    "VideoCacheManager",
+    "CameraManager",
+    "Post",
+    "User",
+    "Comment"
+  ]
+}
